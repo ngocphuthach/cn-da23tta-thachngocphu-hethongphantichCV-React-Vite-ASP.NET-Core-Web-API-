@@ -40,7 +40,8 @@ export function MyCvsPage() {
   const [draggingFile, setDraggingFile] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [tipIndex, setTipIndex] = useState(0)
-  const abortRef = useRef(null)
+  const [activeAnalysisId, setActiveAnalysisId] = useState(null)
+  const activeJobRef = useRef(null)
   const cancelDeleteRef = useRef(null)
   const confirmDeleteRef = useRef(null)
   const reducedMotion = useReducedMotion()
@@ -54,13 +55,74 @@ export function MyCvsPage() {
       const pairs = await Promise.all(items.map(async (cv) => {
         try {
           const analyses = await cvService.listCvAnalyses(token, cv.cvId)
-          return [cv.cvId, analyses[0]?.status || '']
-        } catch { return [cv.cvId, ''] }
+          return [cv.cvId, analyses[0]?.status || '', analyses[0]?.analysisId || null]
+        } catch { return [cv.cvId, '', null] }
       }))
-      setStatuses(Object.fromEntries(pairs))
+      setStatuses(Object.fromEntries(pairs.map(([cvId, status]) => [cvId, status])))
+      const pending = pairs.find(([, status]) => status === 'Pending' || status === 'Processing')
+      if (pending && !activeJobRef.current) {
+        const [cvId, , analysisId] = pending
+        activeJobRef.current = { cvId, analysisId }
+        setWorkingCvId(cvId)
+        setActiveAnalysisId(analysisId)
+        setAnalysisMessage('Yêu cầu đã được tiếp nhận. Quá trình phân tích đang chạy; kết quả sẽ xuất hiện tại đây khi hoàn tất.')
+      }
     } catch (requestError) { setError(getFriendlyError(requestError)) }
     finally { setLoading(false) }
   }, [token])
+
+  useEffect(() => {
+    if (!activeAnalysisId || !workingCvId) return undefined
+    let active = true
+    let timerId
+    let controller
+
+    async function poll() {
+      controller = new AbortController()
+      try {
+        const analysis = await cvService.getAnalysis(token, activeAnalysisId, controller.signal)
+        if (!active) return
+        const status = analysis.status
+        setStatuses((current) => ({ ...current, [workingCvId]: status }))
+        if (status === 'Completed') {
+          activeJobRef.current = null
+          setActiveAnalysisId(null)
+          setWorkingCvId(null)
+          setAnalysisMessage('Phân tích đã hoàn tất. Đang mở kết quả…')
+          navigate(`/analyses/${activeAnalysisId}`)
+          return
+        }
+        if (status === 'Failed') {
+          activeJobRef.current = null
+          setActiveAnalysisId(null)
+          setWorkingCvId(null)
+          setAnalysisMessage('CV vẫn nằm trong danh sách. Bạn có thể thử phân tích lại khi phù hợp.')
+          setError(analysis.failureReason || 'Không thể hoàn tất phân tích CV. Vui lòng thử lại sau.')
+          return
+        }
+        setAnalysisMessage('Yêu cầu đã được tiếp nhận. Quá trình phân tích đang chạy; kết quả sẽ xuất hiện tại đây khi hoàn tất.')
+        timerId = window.setTimeout(poll, 3500)
+      } catch (requestError) {
+        if (!active || requestError?.name === 'AbortError') return
+        if ([401, 404].includes(requestError?.status)) {
+          activeJobRef.current = null
+          setActiveAnalysisId(null)
+          setWorkingCvId(null)
+          setAnalysisMessage('CV vẫn nằm trong danh sách. Bạn có thể xem lịch sử hoặc thử phân tích lại khi phù hợp.')
+          setError(getFriendlyError(requestError))
+          return
+        }
+        timerId = window.setTimeout(poll, 3500)
+      }
+    }
+
+    poll()
+    return () => {
+      active = false
+      window.clearTimeout(timerId)
+      controller?.abort()
+    }
+  }, [activeAnalysisId, navigate, token, workingCvId])
 
   useEffect(() => {
     let active = true
@@ -103,34 +165,26 @@ export function MyCvsPage() {
   }, [deleteTarget])
 
   async function runAnalysis(cvId) {
-    const controller = new AbortController()
-    abortRef.current = controller
-    let timedOut = false
-    const timer = window.setTimeout(() => { timedOut = true; controller.abort() }, 210_000)
     setWorkingCvId(cvId)
     setStatuses((current) => ({ ...current, [cvId]: 'Pending' }))
     setError('')
     setTipIndex(0)
-    setAnalysisMessage('Đang phân tích CV. Quá trình có thể mất 1–2 phút; bạn có thể hủy nếu cần.')
+    setAnalysisMessage('Đang gửi yêu cầu phân tích…')
     try {
-      const result = await cvService.analyze(token, cvId, controller.signal)
-      setStatuses((current) => ({ ...current, [cvId]: 'Completed' }))
-      navigate(`/analyses/${result.analysisId}`)
+      const result = await cvService.analyze(token, cvId)
+      activeJobRef.current = { cvId, analysisId: result.analysisId }
+      setActiveAnalysisId(result.analysisId)
+      setStatuses((current) => ({ ...current, [cvId]: result.status || 'Pending' }))
+      setAnalysisMessage(result.message || 'Yêu cầu đã được tiếp nhận. Quá trình phân tích đang chạy; kết quả sẽ xuất hiện tại đây khi hoàn tất.')
     } catch (requestError) {
-      setStatuses((current) => ({ ...current, [cvId]: requestError.payload?.analysisId ? 'Failed' : current[cvId] === 'Pending' ? 'Failed' : current[cvId] }))
+      activeJobRef.current = null
+      setWorkingCvId(null)
+      setStatuses((current) => ({ ...current, [cvId]: '' }))
       setAnalysisMessage('CV vẫn nằm trong danh sách. Bạn có thể xem lịch sử hoặc thử phân tích lại khi phù hợp.')
       await refresh()
-      setError(timedOut
-        ? 'Đã quá 210 giây. Hãy kiểm tra lịch sử phân tích trước khi gửi yêu cầu khác.'
-        : getFriendlyError(requestError))
-    } finally {
-      window.clearTimeout(timer)
-      abortRef.current = null
-      setWorkingCvId(null)
+      setError(getFriendlyError(requestError))
     }
   }
-
-  function cancelAnalysis() { abortRef.current?.abort() }
 
   async function uploadAndAnalyze(event) {
     event.preventDefault()
@@ -273,7 +327,7 @@ export function MyCvsPage() {
       {error && <div className="notice error" role="alert">{error}</div>}
       {info && <div className="notice success" role="status"><svg className="success-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>{info}</div>}
       {analysisMessage && (workingCvId
-        ? <div className="analysis-wait panel" role="status" aria-live="polite"><svg className="wait-compass" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" strokeWidth="1.7" /><path d="m21 10-3 7-7 5 3-8 7-4Z" fill="currentColor" /></svg><div className="analysis-wait-copy"><p>{analysisMessage}</p><p className="analysis-tip" key={tipIndex} aria-live="off">Mẹo CV: {reducedMotion ? CV_WRITING_TIPS[0] : CV_WRITING_TIPS[tipIndex]}</p><button className="text-button cancel-analysis" onClick={cancelAnalysis}>Hủy phân tích</button></div></div>
+        ? <div className="analysis-wait panel" role="status" aria-live="polite"><svg className="wait-compass" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" strokeWidth="1.7" /><path d="m21 10-3 7-7 5 3-8 7-4Z" fill="currentColor" /></svg><div className="analysis-wait-copy"><p>{analysisMessage}</p><p className="analysis-tip" key={tipIndex} aria-live="off">Mẹo CV: {reducedMotion ? CV_WRITING_TIPS[0] : CV_WRITING_TIPS[tipIndex]}</p></div></div>
         : <div className="notice info" role="status">{analysisMessage}</div>)}
       <section className="section-block">
         <div className="section-title"><div><p className="eyebrow">DANH SÁCH</p><h2>CV của bạn</h2></div><button className="button button-quiet" onClick={refresh} disabled={loading}>Làm mới</button></div>
@@ -283,8 +337,8 @@ export function MyCvsPage() {
             const active = workingCvId === cv.cvId
             return <article className="panel cv-card" key={cv.cvId}>
               <div className="file-icon">{cv.sourceType === 2 ? 'CV' : cv.fileExtension?.toUpperCase() || 'CV'}</div>
-              <div className="cv-meta"><h3>{cv.title}</h3><p>{cv.sourceType === 2 ? 'Nhập tay' : cv.originalFileName || 'Tên file không có sẵn'} <span>•</span> {new Date(cv.createdAt).toLocaleDateString('vi-VN')}</p>{status && <span className={`status status-${status.toLowerCase()}`}>{status === 'Completed' ? 'Đã phân tích' : status === 'Pending' ? 'Đang phân tích' : status === 'Failed' ? 'Lần trước lỗi' : status}</span>}</div>
-              <div className="cv-actions"><button className="button button-primary" onClick={() => runAnalysis(cv.cvId)} disabled={Boolean(workingCvId) || status === 'Pending'}>{active ? 'Đang phân tích…' : status === 'Failed' ? 'Phân tích lại' : 'Phân tích'}</button>{cv.sourceType === 2 && <button className="button button-quiet" onClick={() => loadManualForNewVersion(cv)} disabled={Boolean(workingCvId)}>Sửa và phân tích lại</button>}<button className="button button-danger-quiet" onClick={() => deleteCv(cv)} disabled={Boolean(workingCvId)}>Xóa</button></div>
+              <div className="cv-meta"><h3>{cv.title}</h3><p>{cv.sourceType === 2 ? 'Nhập tay' : cv.originalFileName || 'Tên file không có sẵn'} <span>•</span> {new Date(cv.createdAt).toLocaleDateString('vi-VN')}</p>{status && <span className={`status status-${status.toLowerCase()}`}>{status === 'Completed' ? 'Đã phân tích' : status === 'Pending' || status === 'Processing' ? 'Đang phân tích' : status === 'Failed' ? 'Lần trước lỗi' : status}</span>}</div>
+              <div className="cv-actions"><button className="button button-primary" onClick={() => runAnalysis(cv.cvId)} disabled={Boolean(workingCvId) || status === 'Pending' || status === 'Processing'}>{active ? 'Đang phân tích…' : status === 'Failed' ? 'Phân tích lại' : 'Phân tích'}</button>{cv.sourceType === 2 && <button className="button button-quiet" onClick={() => loadManualForNewVersion(cv)} disabled={Boolean(workingCvId)}>Sửa và phân tích lại</button>}<button className="button button-danger-quiet" onClick={() => deleteCv(cv)} disabled={Boolean(workingCvId)}>Xóa</button></div>
             </article>
           })}</div>
         )}

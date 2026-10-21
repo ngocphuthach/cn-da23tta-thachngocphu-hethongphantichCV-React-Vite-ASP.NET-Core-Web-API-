@@ -118,7 +118,7 @@ export function HomePage() {
             <svg className="steps-connector" viewBox="0 0 1000 120" preserveAspectRatio="none" aria-hidden="true"><path d="M110 60 C270 15 390 105 500 60 S730 15 890 60" pathLength="1" /></svg>
             <div className="steps-grid">
               <article className="step-card"><span className="step-number">01</span><h3>Thêm CV</h3><p>Tải lên CV hoặc nhập học vấn, kỹ năng, kinh nghiệm và dự án.</p></article>
-              <article className="step-card"><span className="step-number">02</span><h3>Xem phân tích</h3><p>Hệ thống trích xuất thông tin và gửi nội dung tới dịch vụ AI để phân tích.</p></article>
+              <article className="step-card"><span className="step-number">02</span><h3>Xem phân tích</h3><p>Hệ thống trích xuất thông tin, che email và số điện thoại, rồi gửi các thông tin còn lại tới dịch vụ AI để phân tích.</p></article>
               <article className="step-card"><span className="step-number">03</span><h3>Đọc gợi ý</h3><p>Xem kỹ năng, bảng xếp hạng nghề do hệ thống tính và lịch sử phân tích.</p></article>
             </div>
           </div>
@@ -138,7 +138,7 @@ export function HomePage() {
           <div><p className="eyebrow">QUYỀN RIÊNG TƯ</p><h2>Bạn biết dữ liệu của mình đi đâu</h2><p>Hãy cân nhắc nội dung bạn gửi trước khi sử dụng hệ thống.</p></div>
           <div className="privacy-list">
             <div className="privacy-item"><span className="privacy-mark" aria-hidden="true">01</span><span>CV được lưu trên máy chủ để phục vụ quản lý và xem lịch sử.</span></div>
-            <div className="privacy-item"><span className="privacy-mark" aria-hidden="true">02</span><span>Nội dung CV được gửi tới dịch vụ AI bên ngoài để phân tích.</span></div>
+            <div className="privacy-item"><span className="privacy-mark" aria-hidden="true">02</span><span>Trước khi gửi tới dịch vụ AI bên ngoài, hệ thống che email và số điện thoại; các thông tin khác trong CV vẫn được gửi để phân tích.</span></div>
             <div className="privacy-item"><span className="privacy-mark" aria-hidden="true">03</span><span>Khi xóa CV, dữ liệu CV và lịch sử liên quan được xóa khỏi hệ thống.</span></div>
             <div className="privacy-item"><span className="privacy-mark" aria-hidden="true">04</span><span>Kết quả mang tính tham khảo và không thay thế tư vấn nghề nghiệp từ người thật.</span></div>
           </div>
@@ -149,7 +149,7 @@ export function HomePage() {
           <div className="faq-grid reveal-container" ref={faqRef}>
             <article className="faq-card"><h3>Career Compass phân tích những gì?</h3><p>Hệ thống đọc học vấn, kỹ năng và kinh nghiệm trong CV, so sánh với các vị trí CNTT, rồi hiển thị nghề đang khớp nhất, kỹ năng còn thiếu và gợi ý chỉnh CV. Lịch sử mỗi lần phân tích được lưu để bạn xem lại.</p></article>
             <article className="faq-card"><h3>Kết quả có thay cho tư vấn nghề nghiệp không?</h3><p>Kết quả mang tính tham khảo và không thay thế tư vấn nghề nghiệp từ người thật.</p></article>
-            <article className="faq-card"><h3>CV và nội dung được xử lý thế nào?</h3><p>CV được lưu trên máy chủ. Nội dung CV được gửi tới dịch vụ AI bên ngoài để phân tích.</p></article>
+            <article className="faq-card"><h3>CV và nội dung được xử lý thế nào?</h3><p>CV được lưu trên máy chủ. Trước khi gửi tới dịch vụ AI bên ngoài, hệ thống che email và số điện thoại; các thông tin khác trong CV vẫn được gửi để phân tích.</p></article>
             <article className="faq-card"><h3>Điều gì xảy ra khi tôi xóa CV?</h3><p>Dữ liệu CV và lịch sử phân tích liên quan được xóa khỏi hệ thống.</p></article>
           </div>
         </section>

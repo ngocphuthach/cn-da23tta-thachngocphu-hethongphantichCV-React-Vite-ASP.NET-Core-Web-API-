@@ -65,11 +65,30 @@ export function AnalysisResultPage() {
   const [previousScore, setPreviousScore] = useState(null)
   useEffect(() => {
     let active = true
-    cvService.getAnalysis(token, analysisId)
-      .then((result) => { if (active) setAnalysis(result) })
-      .catch((requestError) => { if (active) setError(getFriendlyError(requestError)) })
-      .finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
+    let timerId
+    let controller
+    async function poll() {
+      controller = new AbortController()
+      try {
+        const result = await cvService.getAnalysis(token, analysisId, controller.signal)
+        if (!active) return
+        setAnalysis(result)
+        setLoading(false)
+        if (result.status === 'Pending' || result.status === 'Processing') {
+          timerId = window.setTimeout(poll, 3500)
+        }
+      } catch (requestError) {
+        if (!active || requestError?.name === 'AbortError') return
+        setError(getFriendlyError(requestError))
+        setLoading(false)
+      }
+    }
+    poll()
+    return () => {
+      active = false
+      window.clearTimeout(timerId)
+      controller?.abort()
+    }
   }, [analysisId, token])
 
   useEffect(() => {
@@ -122,7 +141,7 @@ export function AnalysisResultPage() {
 
   return <div className="analysis-results">
     <section className="page-heading"><div><p className="eyebrow">KẾT QUẢ PHÂN TÍCH</p><h1>Gợi ý dành cho bạn</h1><p className="muted">Hoàn tất {analysis?.completedAt ? new Date(analysis.completedAt).toLocaleString('vi-VN') : ''}</p></div><Link className="button button-secondary" to="/history">Lịch sử phân tích</Link></section>
-    {analysis?.status !== 'Completed' && <div className={`notice ${analysis?.status === 'Failed' ? 'error' : 'info'}`} role="status">{analysis?.status === 'Failed' ? 'Lần phân tích này chưa hoàn tất. Bạn có thể thử lại từ trang CV của tôi.' : 'Phân tích đang chờ xử lý. Hãy tải lại sau.'}</div>}
+    {analysis?.status !== 'Completed' && <div className={`notice ${analysis?.status === 'Failed' ? 'error' : 'info'}`} role="status">{analysis?.status === 'Failed' ? (analysis.failureReason || 'Lần phân tích này chưa hoàn tất. Bạn có thể thử lại từ trang CV của tôi.') : 'Đang phân tích CV. Kết quả sẽ tự động hiển thị khi hoàn tất.'}</div>}
     {analysis?.status === 'Completed' && <>
       <div className="result-overview">
         <section className="score-banner panel">

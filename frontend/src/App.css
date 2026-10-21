@@ -131,6 +131,7 @@
 .status-completed { color: var(--success); background: var(--success-soft); border-color: #8CCBB5; }
 .status-failed { color: var(--danger); background: var(--danger-soft); border-color: #d99ca2; }
 .status-pending { color: var(--amber); background: var(--amber-soft); border-color: #FFB020; }
+.status-processing { color: var(--amber); background: var(--amber-soft); border-color: #FFB020; }
 .empty-state { min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px; text-align: center; color: var(--muted); }
 .empty-state h3 { margin-bottom: 7px; }
 .empty-state p { max-width: 520px; margin-bottom: 0; }

@@ -124,6 +124,7 @@ body { color: var(--ink); background: var(--canvas); }
 .status { color: var(--muted); border-color: var(--line); background: #F3F6FB; }
 .status-completed { color: var(--success); }
 .status-pending { color: var(--tag-ink); background: var(--tag-bg); }
+.status-processing { color: var(--tag-ink); background: var(--tag-bg); }
 .skeleton { background: #E4EAFF; }
 .upload-panel.is-dragging { background: #E4EAFF; }
 .sample-score-progress { stroke: var(--primary); }

@@ -23,7 +23,34 @@ public static class CvAnalysisDtoMapper
             analysis.CompletedAt,
             analysis.Status.ToString(),
             analysis.OverallScore,
-            ParseResult(analysis.ResultJson));
+            analysis.Status == CvAnalysisStatus.Failed ? null : ParseResult(analysis.ResultJson),
+            analysis.Status == CvAnalysisStatus.Failed ? ParseFailureReason(analysis.ResultJson) : null);
+
+    private static string ParseFailureReason(string? resultJson)
+    {
+        if (string.IsNullOrWhiteSpace(resultJson))
+        {
+            return "Không thể hoàn tất phân tích CV. Vui lòng thử lại sau.";
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(resultJson);
+            if (document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("failureReason", out var reason)
+                && reason.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(reason.GetString()))
+            {
+                return reason.GetString()!;
+            }
+        }
+        catch (JsonException)
+        {
+            // A failed analysis should not expose a malformed stored result.
+        }
+
+        return "Không thể hoàn tất phân tích CV. Vui lòng thử lại sau.";
+    }
 
     private static string? GetBestJobCode(string? resultJson)
     {

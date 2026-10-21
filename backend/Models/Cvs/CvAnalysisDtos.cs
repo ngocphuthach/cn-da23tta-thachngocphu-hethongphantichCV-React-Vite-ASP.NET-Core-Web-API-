@@ -18,7 +18,8 @@ public sealed record CvAnalysisDetailDto(
     DateTime? CompletedAt,
     string Status,
     decimal? OverallScore,
-    JsonElement? Result);
+    JsonElement? Result,
+    string? FailureReason);
 
 public sealed record PagedCvAnalysisResponse(
     int Page,

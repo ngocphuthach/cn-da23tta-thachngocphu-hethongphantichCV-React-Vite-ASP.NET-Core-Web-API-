@@ -18,6 +18,7 @@ public sealed class CvsController(
     CvUploadValidator uploadValidator,
     CvFileStorage fileStorage,
     CvAnalysisService analysisService,
+    AnalysisWorkQueue analysisWorkQueue,
     ILogger<CvsController> logger) : ControllerBase
 {
     private const int MaxCvsPerUser = 50;
@@ -242,7 +243,7 @@ public sealed class CvsController(
 
     [HttpPost("{cvId:guid}/analyses")]
     [EnableRateLimiting("CvAnalysisByUser")]
-    public async Task<ActionResult<CvAnalysisDetailDto>> Analyze(
+    public async Task<ActionResult<CvAnalysisStartedDto>> Analyze(
         Guid cvId,
         CancellationToken cancellationToken)
     {
@@ -253,8 +254,20 @@ public sealed class CvsController(
 
         try
         {
-            var analysis = await analysisService.AnalyzeAsync(userId, cvId, cancellationToken);
-            return Ok(CvAnalysisDtoMapper.ToDetailDto(analysis));
+            var analysis = await analysisService.CreatePendingAsync(userId, cvId, cancellationToken);
+            if (!analysisWorkQueue.TryEnqueue(analysis.AnalysisId))
+            {
+                const string queueFullMessage = "Hệ thống đang bận xử lý các yêu cầu phân tích. Vui lòng thử lại sau.";
+                await analysisService.MarkQueueFailureAsync(analysis.AnalysisId, queueFullMessage);
+                return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                    new { message = queueFullMessage });
+            }
+
+            var response = new CvAnalysisStartedDto(
+                analysis.AnalysisId,
+                analysis.Status.ToString(),
+                "Yêu cầu đã được tiếp nhận. Kết quả sẽ hiển thị khi phân tích hoàn tất.");
+            return Accepted($"/api/cv-analyses/{analysis.AnalysisId}", response);
         }
         catch (OwnedCvNotFoundException)
         {
@@ -263,14 +276,6 @@ public sealed class CvsController(
         catch (AnalysisAlreadyPendingException)
         {
             return Conflict(new { message = "CV này đang được phân tích. Hãy thử lại sau." });
-        }
-        catch (AnalysisRunFailedException exception)
-        {
-            return StatusCode(StatusCodes.Status502BadGateway, new
-            {
-                analysisId = exception.AnalysisId,
-                message = "Không thể phân tích CV lúc này. Vui lòng thử lại sau.",
-            });
         }
     }
 

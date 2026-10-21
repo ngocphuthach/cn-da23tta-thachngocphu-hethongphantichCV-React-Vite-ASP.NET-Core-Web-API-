@@ -50,7 +50,7 @@ Backend không tự áp dụng migration khi khởi động. Chờ SQL Server he
 
 - Không commit `.env`; chỉ dùng `.env.example` làm mẫu. Không ghi key hoặc mật khẩu vào source.
 - CV mẫu đặt trong `ai-service/samples/` được Git ignore. Chỉ dùng CV đã ẩn danh khi thử nghiệm.
-- CV được lưu trên máy chủ; nội dung CV được gửi tới dịch vụ AI bên ngoài để phân tích. Cân nhắc dữ liệu trước khi tải lên.
+- CV được lưu trên máy chủ; trước khi gửi, hệ thống che email và số điện thoại. Các thông tin khác trong CV vẫn được gửi tới dịch vụ AI bên ngoài để phân tích.
 - Kết quả AI và điểm khớp kỹ năng chỉ hỗ trợ tham khảo, không thay thế đánh giá nghề nghiệp của con người.
 - Công cụ thử AI độc lập nằm tại `ai-service/test_analyze.py`; không dùng thay luồng Backend chính.
 - Chưa có kiểm thử tự động bao phủ đầy đủ toàn bộ luồng; cấu hình provider/model và khả năng truy cập dịch vụ AI phụ thuộc nhà cung cấp bên ngoài.

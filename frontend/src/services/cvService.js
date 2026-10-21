@@ -13,5 +13,5 @@ export const cvService = {
   listCvAnalyses: (token, cvId) => apiRequest(`/api/cvs/${cvId}/analyses`, { token }),
   analyze: (token, cvId, signal) => apiRequest(`/api/cvs/${cvId}/analyses`, { token, method: 'POST', signal }),
   listAnalyses: (token, page, pageSize) => apiRequest(`/api/cv-analyses?page=${page}&pageSize=${pageSize}`, { token }),
-  getAnalysis: (token, analysisId) => apiRequest(`/api/cv-analyses/${analysisId}`, { token }),
+  getAnalysis: (token, analysisId, signal) => apiRequest(`/api/cv-analyses/${analysisId}`, { token, signal }),
 }

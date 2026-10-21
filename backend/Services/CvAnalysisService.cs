@@ -19,89 +19,92 @@ public sealed class CvAnalysisService(
     private static readonly TimeSpan PendingTimeout = TimeSpan.FromMinutes(10);
     private static readonly JsonSerializerOptions ResultJsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<CvAnalysis> AnalyzeAsync(Guid userId, Guid cvId, CancellationToken cancellationToken)
+    public async Task<CvAnalysis> CreatePendingAsync(
+        Guid userId,
+        Guid cvId,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+        var cv = await dbContext.CVs.SingleOrDefaultAsync(
+            item => item.CvId == cvId && item.UserId == userId,
+            cancellationToken);
+        if (cv is null)
+        {
+            throw new OwnedCvNotFoundException();
+        }
+
+        var now = DateTime.UtcNow;
+        var cutoff = now - PendingTimeout;
+        var activeAnalyses = await dbContext.CVAnalyses
+            .Where(item => item.CvId == cvId
+                && (item.Status == CvAnalysisStatus.Pending || item.Status == CvAnalysisStatus.Processing))
+            .ToListAsync(cancellationToken);
+        foreach (var expired in activeAnalyses.Where(item =>
+            item.Status == CvAnalysisStatus.Pending && item.CreatedAt <= cutoff))
+        {
+            expired.Status = CvAnalysisStatus.Failed;
+            expired.ResultJson = BuildFailureResult("Yêu cầu phân tích đã quá hạn trong hàng đợi. Vui lòng thử lại.");
+            expired.CompletedAt = now;
+        }
+
+        if (activeAnalyses.Any(item => item.Status == CvAnalysisStatus.Processing
+            || (item.Status == CvAnalysisStatus.Pending && item.CreatedAt > cutoff)))
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            throw new AnalysisAlreadyPendingException();
+        }
+
+        var analysis = new CvAnalysis
+        {
+            CvId = cv.CvId,
+            Status = CvAnalysisStatus.Pending,
+            CreatedAt = now,
+        };
+        dbContext.CVAnalyses.Add(analysis);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return analysis;
+    }
+
+    public async Task MarkQueueFailureAsync(Guid analysisId, string safeMessage)
+    {
+        var analysis = await dbContext.CVAnalyses
+            .SingleOrDefaultAsync(item => item.AnalysisId == analysisId, CancellationToken.None);
+        if (analysis is null || analysis.Status != CvAnalysisStatus.Pending)
+        {
+            return;
+        }
+
+        analysis.Status = CvAnalysisStatus.Failed;
+        analysis.ResultJson = BuildFailureResult(safeMessage);
+        analysis.CompletedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(CancellationToken.None);
+    }
+
+    public async Task ProcessPendingAsync(Guid analysisId, CancellationToken cancellationToken)
     {
         var totalTimer = Stopwatch.StartNew();
         var aiServiceMs = 0d;
         int? aiServiceHttpStatusCode = null;
         var validationAndScoringMs = 0d;
         var databaseSaveMs = 0d;
-
-        async Task SaveChangesAndMeasureAsync(CancellationToken token)
+        var claimed = await dbContext.CVAnalyses
+            .Where(item => item.AnalysisId == analysisId && item.Status == CvAnalysisStatus.Pending)
+            .ExecuteUpdateAsync(updates => updates
+                .SetProperty(item => item.Status, CvAnalysisStatus.Processing), cancellationToken);
+        if (claimed == 0)
         {
-            var timer = Stopwatch.StartNew();
-            try
-            {
-                await dbContext.SaveChangesAsync(token);
-            }
-            finally
-            {
-                databaseSaveMs += timer.Elapsed.TotalMilliseconds;
-            }
-        }
-
-        CvAnalysis analysis;
-        await using (var transaction = await dbContext.Database.BeginTransactionAsync(
-            IsolationLevel.Serializable, cancellationToken))
-        {
-            var cv = await dbContext.CVs.SingleOrDefaultAsync(
-                item => item.CvId == cvId && item.UserId == userId,
-                cancellationToken);
-            if (cv is null)
-            {
-                throw new OwnedCvNotFoundException();
-            }
-
-            var now = DateTime.UtcNow;
-            var cutoff = now - PendingTimeout;
-            var pendingAnalyses = await dbContext.CVAnalyses
-                .Where(item => item.CvId == cvId && item.Status == CvAnalysisStatus.Pending)
-                .ToListAsync(cancellationToken);
-            var activePending = false;
-            foreach (var pending in pendingAnalyses)
-            {
-                if (pending.CreatedAt <= cutoff)
-                {
-                    pending.Status = CvAnalysisStatus.Failed;
-                    pending.CompletedAt = now;
-                }
-                else
-                {
-                    activePending = true;
-                }
-            }
-
-            if (activePending)
-            {
-                if (pendingAnalyses.Any(item => item.Status == CvAnalysisStatus.Failed))
-                {
-                    await SaveChangesAndMeasureAsync(cancellationToken);
-                }
-
-                await transaction.CommitAsync(cancellationToken);
-                throw new AnalysisAlreadyPendingException();
-            }
-
-            if (pendingAnalyses.Count > 0)
-            {
-                await SaveChangesAndMeasureAsync(cancellationToken);
-            }
-
-            analysis = new CvAnalysis
-            {
-                CvId = cv.CvId,
-                Status = CvAnalysisStatus.Pending,
-                CreatedAt = now,
-            };
-            dbContext.CVAnalyses.Add(analysis);
-            await SaveChangesAndMeasureAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
+            return;
         }
 
         try
         {
+            var analysis = await dbContext.CVAnalyses
+                .SingleAsync(item => item.AnalysisId == analysisId, cancellationToken);
             var cvSource = await dbContext.CVs.AsNoTracking()
-                .Where(item => item.CvId == cvId && item.UserId == userId)
+                .Where(item => item.CvId == analysis.CvId)
                 .Select(item => new { item.SourceType, item.FileStorageKey, item.FileExtension, item.ContentText })
                 .SingleAsync(cancellationToken);
 
@@ -164,29 +167,56 @@ public sealed class CvAnalysisService(
             analysis.CompletedAt = DateTime.UtcNow;
             analysis.AiProvider = null;
             analysis.ModelName = null;
-            await SaveChangesAndMeasureAsync(cancellationToken);
-            return analysis;
-        }
-        catch
-        {
-            // The response and exception are intentionally not logged or persisted.
-            analysis.Status = CvAnalysisStatus.Failed;
-            analysis.ResultJson = null;
-            analysis.OverallScore = null;
-            analysis.CompletedAt = DateTime.UtcNow;
-            analysis.AiProvider = null;
-            analysis.ModelName = null;
+            var saveTimer = Stopwatch.StartNew();
             try
             {
-                await SaveChangesAndMeasureAsync(CancellationToken.None);
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+            finally
+            {
+                databaseSaveMs += saveTimer.Elapsed.TotalMilliseconds;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            dbContext.ChangeTracker.Clear();
+            await dbContext.CVAnalyses
+                .Where(item => item.AnalysisId == analysisId && item.Status == CvAnalysisStatus.Processing)
+                .ExecuteUpdateAsync(updates => updates
+                    .SetProperty(item => item.Status, CvAnalysisStatus.Pending), CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            var safeMessage = GetSafeFailureReason(exception);
+            try
+            {
+                dbContext.ChangeTracker.Clear();
+                var analysis = await dbContext.CVAnalyses
+                    .SingleOrDefaultAsync(item => item.AnalysisId == analysisId, CancellationToken.None);
+                if (analysis is not null && analysis.Status == CvAnalysisStatus.Processing)
+                {
+                    analysis.Status = CvAnalysisStatus.Failed;
+                    analysis.ResultJson = BuildFailureResult(safeMessage);
+                    analysis.OverallScore = null;
+                    analysis.CompletedAt = DateTime.UtcNow;
+                    analysis.AiProvider = null;
+                    analysis.ModelName = null;
+                    var saveTimer = Stopwatch.StartNew();
+                    try
+                    {
+                        await dbContext.SaveChangesAsync(CancellationToken.None);
+                    }
+                    finally
+                    {
+                        databaseSaveMs += saveTimer.Elapsed.TotalMilliseconds;
+                    }
+                }
             }
             catch
             {
-                // A failed database connection can prevent persisting Failed; the row
-                // remains recoverable through the ten-minute pending timeout.
+                logger.LogWarning(
+                    "Could not persist failed CV analysis. AnalysisId={AnalysisId}", analysisId);
             }
-
-            throw new AnalysisRunFailedException(analysis.AnalysisId);
         }
         finally
         {
@@ -196,7 +226,7 @@ public sealed class CvAnalysisService(
                 "AiServiceHttpStatusCode={AiServiceHttpStatusCode} " +
                 "ValidationAndScoringMs={ValidationAndScoringMs:F2} DatabaseSaveMs={DatabaseSaveMs:F2} " +
                 "TotalMs={TotalMs:F2}",
-                analysis.AnalysisId,
+                analysisId,
                 aiServiceMs,
                 aiServiceHttpStatusCode,
                 validationAndScoringMs,
@@ -221,10 +251,32 @@ public sealed class CvAnalysisService(
         }
 
         var now = DateTime.UtcNow;
+        var failureResult = BuildFailureResult("Yêu cầu phân tích đã quá hạn trong hàng đợi. Vui lòng thử lại.");
         return query.ExecuteUpdateAsync(updates => updates
             .SetProperty(item => item.Status, CvAnalysisStatus.Failed)
+            .SetProperty(item => item.ResultJson, failureResult)
             .SetProperty(item => item.CompletedAt, now), cancellationToken);
     }
+
+    private static string BuildFailureResult(string safeMessage) =>
+        JsonSerializer.Serialize(new { failureReason = safeMessage }, ResultJsonOptions);
+
+    private static string GetSafeFailureReason(Exception exception) => exception switch
+    {
+        AiServiceUnavailableException { HttpStatusCode: 400 } =>
+            "Dịch vụ AI không xử lý được yêu cầu này. Vui lòng kiểm tra CV rồi thử lại.",
+        AiServiceUnavailableException { HttpStatusCode: 401 or 403 } =>
+            "Dịch vụ AI chưa được cấp quyền xử lý yêu cầu. Vui lòng liên hệ người quản lý hệ thống.",
+        AiServiceUnavailableException { HttpStatusCode: 404 } =>
+            "Không tìm thấy endpoint phân tích AI. Vui lòng liên hệ người quản lý hệ thống.",
+        AiServiceUnavailableException { HttpStatusCode: 429 } =>
+            "Dịch vụ AI đang giới hạn yêu cầu. Vui lòng thử lại sau.",
+        AiServiceUnavailableException { HttpStatusCode: null } =>
+            "Dịch vụ AI không phản hồi kịp thời hoặc đang mất kết nối. Vui lòng thử lại sau.",
+        AiServiceUnavailableException { HttpStatusCode: >= 500 } =>
+            "Dịch vụ AI tạm thời gặp lỗi. Vui lòng thử lại sau.",
+        _ => "Không thể hoàn tất phân tích CV. Vui lòng thử lại sau.",
+    };
 
     private async Task<(string Json, decimal? OverallScore)> ValidateAndEnrichAsync(
         string aiJson,
@@ -340,9 +392,4 @@ public sealed class OwnedCvNotFoundException : Exception
 
 public sealed class AnalysisAlreadyPendingException : Exception
 {
-}
-
-public sealed class AnalysisRunFailedException(Guid analysisId) : Exception
-{
-    public Guid AnalysisId { get; } = analysisId;
 }

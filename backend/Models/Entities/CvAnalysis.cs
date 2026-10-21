@@ -3,6 +3,7 @@ namespace CvAdvisor.Api.Models.Entities;
 public enum CvAnalysisStatus
 {
     Pending,
+    Processing,
     Completed,
     Failed
 }

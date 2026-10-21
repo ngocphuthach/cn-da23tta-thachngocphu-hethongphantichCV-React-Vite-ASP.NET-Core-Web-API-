@@ -86,6 +86,8 @@ builder.Services.AddHttpClient<AiServiceClient>((serviceProvider, client) =>
 builder.Services.AddSingleton<CvUploadValidator>();
 builder.Services.AddSingleton<CvFileStorage>();
 builder.Services.AddScoped<CvAnalysisService>();
+builder.Services.AddSingleton<AnalysisWorkQueue>();
+builder.Services.AddHostedService<CvAnalysisBackgroundWorker>();
 
 var cvAnalysisRateLimit = builder.Configuration
     .GetSection(CvAnalysisRateLimitOptions.SectionName)
