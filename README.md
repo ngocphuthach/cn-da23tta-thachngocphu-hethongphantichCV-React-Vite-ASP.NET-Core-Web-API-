@@ -1,149 +1,56 @@
-# CV Advisor — Hệ thống phân tích CV & tư vấn nghề nghiệp
+# Career Compass
 
-Đồ án tốt nghiệp ngành CNTT. Hệ thống cho phép người dùng tải CV lên, dùng AI (Gemini/OpenAI)
-phân tích nội dung và đưa ra gợi ý nghề nghiệp, kỹ năng cần cải thiện.
+Career Compass là hệ thống quản lý CV, phân tích nội dung bằng AI và tham khảo mức độ khớp kỹ năng với các nghề CNTT. Kết quả chỉ mang tính tham khảo.
 
-> Trạng thái: Backend hỗ trợ tài khoản JWT, upload CV, gọi AI Service và lưu lịch sử phân tích trong SQL Server.
+## Công nghệ và kiến trúc
 
-## Công nghệ sử dụng
+- Frontend: React, Vite.
+- Backend trung tâm: ASP.NET Core Web API, JWT, Entity Framework Core.
+- AI Service: Python, FastAPI; gửi nội dung CV tới dịch vụ AI bên ngoài.
+- Cơ sở dữ liệu: Microsoft SQL Server; môi trường toàn hệ thống dùng Docker Compose.
+- Backend gọi AI Service và lưu CV, kết quả, lịch sử vào SQL Server.
 
-| Thành phần | Công nghệ |
-|---|---|
-| Frontend | React 19 + Vite 8 |
-| Backend | ASP.NET Core Web API (.NET 10) |
-| AI Service | Python 3.12 + FastAPI + Uvicorn |
-| Cơ sở dữ liệu | SQL Server 2022 (chạy bằng Docker) |
-| Hạ tầng | Docker Compose, Git/GitHub |
+## Chức năng hiện có
+
+Đăng ký và đăng nhập JWT; tải CV PDF/DOCX hoặc nhập thông tin CV thủ công; phân tích CV bằng AI; backend tự tính điểm khớp kỹ năng; xem kết quả và lịch sử phân tích; quản lý và xóa CV.
 
 ## Cấu trúc thư mục
 
-```
-code CN/
-├── frontend/            # React + Vite (giao diện người dùng)
-├── backend/             # ASP.NET Core Web API (CvAdvisor.Api)
-├── ai-service/          # Python FastAPI (phân tích CV, gọi AI)
-│   ├── venv/            # virtual environment (không commit)
-│   ├── main.py          # FastAPI: /health và /analyze
-│   ├── analyzer.py      # trích xuất CV, gọi LLM, kiểm tra JSON
-│   ├── llm_client.py    # adapter Gemini/OpenAI-compatible
-│   └── requirements.txt
-├── docker-compose.yml   # SQL Server 2022
-├── .env.example         # mẫu biến môi trường (commit được)
-├── .env                 # giá trị thật (KHÔNG commit)
-├── .gitignore
-└── README.md
+```text
+frontend/       React + Vite
+backend/        ASP.NET Core API, EF Core và migrations
+ai-service/     FastAPI, trích xuất CV và gọi LLM
+docker-compose.yml
+dotnet-tools.json
 ```
 
-## Yêu cầu môi trường
+## Chạy toàn hệ thống bằng Docker Compose
 
-- Git, Node.js (>= 20) + npm, .NET SDK 10, Python 3.12, Docker Desktop (bật WSL2).
-
-## Chuẩn bị lần đầu
-
-```powershell
-# 1. Tạo file .env từ mẫu rồi sửa mật khẩu / API key
-Copy-Item .env.example .env
-```
-
-## Cách chạy từng phần
-
-### 1) Cơ sở dữ liệu — SQL Server (Docker)
-
-```powershell
-docker compose up -d sqlserver
-docker compose ps sqlserver
-docker compose logs -f sqlserver
-docker compose stop sqlserver
-```powershell
-cd backend
-dotnet run --launch-profile http
-```
-
-- API: <http://localhost:5000>
-- Swagger UI: <http://localhost:5000/swagger/index.html>
-- Cấu hình User Secrets cho `AiService:InternalApiKey` bằng cùng giá trị local với `INTERNAL_API_KEY` của AI Service. Không đặt khóa thật vào `appsettings.json`.
-- CV được lưu ngoài thư mục dự án theo `Storage:CvRoot`; để trống sẽ dùng thư mục dữ liệu người dùng bên ngoài repository. Nếu chạy Backend trong container, cần mount đường dẫn lưu này thành volume bền vững.
-- `POST /api/cvs` nhận multipart field `file`. Các route `/api/cvs`, `/api/cv-analyses` cần JWT Bearer; Swagger UI có nút **Authorize** để dán access token.
-- `POST /api/cvs/{cvId}/analyses` gọi AI Service và lưu lịch sử; giới hạn mặc định 5 lần mỗi 15 phút/user. Timeout AI mặc định 120 giây. Các giới hạn nằm trong `RateLimiting:CvAnalysis` và `AiService:TimeoutSeconds` của `appsettings.json`.
-- `GET /api/cv-analyses?page=1&pageSize=20` liệt kê lịch sử có phân trang; `GET /api/cv-analyses/{analysisId}` xem chi tiết; `DELETE /api/cvs/{cvId}` xóa CV và lịch sử liên quan.
-
-### 3) Frontend — React + Vite
-
-```powershell
-cd frontend
-npm install        # chỉ cần chạy lần đầu
-npm run dev
-```
-
-- Giao diện: <http://localhost:5173>
-
-### 4) AI Service — Python FastAPI
-
-```powershell
-cd ai-service
-python -m venv venv                          # tạo virtual environment (lần đầu)
-.\venv\Scripts\Activate.ps1                  # kích hoạt venv
-pip install -r requirements.txt             # cài thư viện (lần đầu)
-uvicorn main:app --reload --port 8000       # chạy service
-```
-
-- Health check: <http://localhost:8000/health> → `{"status":"ok"}`
-- Tài liệu API: <http://localhost:8000/docs>
-- `POST /analyze` nhận multipart field `file`, chỉ PDF/DOCX, tối đa 5 MB. File được kiểm tra đuôi và chữ ký nội dung, giới hạn body multipart và xử lý trong bộ nhớ; ứng dụng không lưu CV thành file.
-- Gửi thử bằng PowerShell: `curl.exe -X POST http://localhost:8000/analyze -F "file=@C:\duong-dan\cv.pdf"`
-- Nếu đã cấu hình `INTERNAL_API_KEY`, gửi thêm header `X-Internal-Key` có giá trị tương ứng. Không cần header này khi biến chưa được đặt.
-- Endpoint trả JSON sau khi validate. File không hợp lệ trả HTTP 400; lỗi LLM hoặc JSON đầu ra sau retry trả HTTP 502 với thông báo đã lược bỏ thông tin nhạy cảm.
-- `jobs.json` được nạp một lần khi service khởi động. Cấu hình provider/model vẫn lấy từ `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_MODEL` và `LLM_API_KEY`.
-
-## Bảo mật
-
-- **Không bao giờ** commit file `.env` (đã nằm trong `.gitignore`).
-- Chỉ commit `.env.example` với giá trị giả.
-- API key thật chỉ để trong `.env` ở máy cá nhân.
-
-## Lộ trình tiếp theo
-
-- [ ] Thiết kế CSDL + EF Core migrations (User, CV, Job, Analysis...)
-- [ ] Chức năng đăng nhập/đăng ký (JWT)
-- [ ] Upload CV (PDF/DOCX) + trích xuất nội dung
-- [ ] Tích hợp AI (Gemini/OpenAI) để phân tích & tư vấn
-- [ ] Docker hóa toàn bộ hệ thống + CI/CD
-
-## Ch?y to?n h? th?ng b?ng Docker Compose
-
-Compose ch?y Backend ? Production, AI Service v? SQL Server ch? giao ti?p trong m?ng Docker. Frontend v? Backend ch? bind v?o loopback c?a m?y host.
-
-### C?u h?nh
-
-1. Sao ch?p `.env.example` th?nh `.env` n?u ch?a c?, sau ?? t? ?i?n c?c gi? tr? th?t tr?n m?y c? nh?n. Compose ch? truy?n c?c bi?n ???c khai b?o t??ng minh trong `docker-compose.yml`; c?c bi?n c? nh? `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ConnectionStrings__DefaultConnection` v? `ASPNETCORE_ENVIRONMENT` kh?ng ???c chuy?n v?o container.
-2. `JWT_SIGNING_KEY` ph?i c? ?t nh?t 32 k? t?. `INTERNAL_API_KEY` ???c d?ng chung cho Backend v? AI Service. `CORS_ALLOWED_ORIGIN` ph?i kh?p origin c?a tr?nh duy?t; m?u `.env.example` ??t `http://localhost:5173`. N?u bi?n kh?ng c? ho?c r?ng th? Backend kh?ng cho ph?p origin n?o.
-3. Chu?i k?t n?i b?n trong Compose d?ng `sqlserver` l?m host v? ???c t?o t? `SA_PASSWORD`. M?t kh?u SQL kh?ng ???c ch?a `;`, `$` ho?c d?u nh?y v? c?c k? t? n?y xung ??t v?i connection string ho?c n?i suy Compose.
-4. `VITE_API_BASE_URL` ???c truy?n l?m build arg c?a Vite; ??y l? ??a ch? Backend m? tr?nh duy?t truy c?p, m?c ??nh `http://localhost:5000`.
-
-### Ch?y v? ki?m tra
+Tạo file cấu hình cục bộ bằng `Copy-Item .env.example .env`, rồi tự điền các biến cần thiết. Compose dùng các tên biến: `SA_PASSWORD`, `JWT_SIGNING_KEY`, `INTERNAL_API_KEY`, `CORS_ALLOWED_ORIGIN`, `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`, `VITE_API_BASE_URL` (cùng `MSSQL_PID` và `MSSQL_PORT` nếu cần điều chỉnh). Không ghi giá trị bí mật vào README hoặc source.
 
 ```powershell
 docker compose config --quiet
 docker compose up --build
-docker compose ps
-docker compose logs -f backend ai-service
 ```
 
-- Frontend: <http://localhost:5173>
-- Backend: <http://localhost:5000>
-- SQL Server cho SSMS/migration t? m?y host: `localhost,1433` (ch? bind `127.0.0.1`).
-- `/health` c?a Backend l? liveness check, kh?ng truy c?p database v? kh?ng ti?t l? c?u h?nh. AI Service c? `/health` cho liveness v? `/ready` cho t?nh tr?ng ?? n?p c?u h?nh LLM; Compose ch? d?ng `/health`.
-- Backend healthcheck d?ng `curl`; Dockerfile c?i `curl` trong image runtime. AI healthcheck d?ng `python -c` v? `urllib` c? s?n. Frontend d?ng `busybox wget` trong image Alpine Nginx kh?ng root. SQL healthcheck d?ng `sqlcmd` c? s?n trong image SQL Server 2022 ?? ghim tag.
-- File CV ???c l?u ? volume `cvadvisor-cv-files`, t?i `/app/storage` trong Backend. Database ? volume `cvadvisor-mssql-data`.
+Frontend tại <http://localhost:5173>, Backend tại <http://localhost:5000>. SQL Server được publish trên `localhost,1433`; AI Service chỉ dùng nội bộ Compose. Xem log bằng `docker compose logs -f backend ai-service`; dừng bằng `docker compose stop` hoặc `docker compose down` (không dùng `down -v` nếu cần giữ volume).
 
-### M?i tr??ng Backend trong Compose
+## Chạy từng phần khi phát triển
 
-Compose ??t `ASPNETCORE_ENVIRONMENT=Production` tr?c ti?p, kh?ng l?y gi? tr? c? t? `.env`. V? v?y Swagger/OpenAPI ti?p t?c t?t trong container; khi ch?y Backend local b?ng Development, Swagger v?n b?t. CORS nh?n origin allowlist t? `CORS_ALLOWED_ORIGIN`; ?? tr?ng th? kh?ng cho ph?p origin n?o. Kh?ng d?ng wildcard. Rate limit ??ng nh?p v?n d?a tr?n IP m? ASP.NET Core nh?n th?y; n?u sau n?y th?m reverse proxy, c?n c?u h?nh forwarded headers v? ch? tin proxy ?? bi?t.
+- SQL Server: `docker compose up -d sqlserver`.
+- Backend: thiết lập connection string qua User Secrets, sau đó chạy `cd backend; dotnet run --launch-profile http`.
+- AI Service: trong `ai-service`, tạo và kích hoạt virtual environment, cài `requirements.txt`, rồi chạy `uvicorn main:app --reload --port 8000`. Cấu hình `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`; khóa nội bộ `INTERNAL_API_KEY` phải khớp cấu hình Backend.
+- Frontend: trong `frontend`, cài dependencies bằng `npm install`, rồi `npm run dev`. `VITE_API_BASE_URL` xác định địa chỉ Backend; cấu hình phát triển hiện dùng `http://localhost:5000`.
 
-### Migration c? ki?m so?t
+## Migration có kiểm soát
 
-Backend kh?ng t? ch?y migration khi kh?i ??ng. ??i SQL Server b?o `healthy`, sau ?? ch?y migration t? m?y host b?ng `dotnet ef database update` v?i connection string trong User Secrets tr? t?i `localhost,1433`. D?ng ??ng c?ng c? EF ?? khai b?o trong `dotnet-tools.json`. Seed data ???c ?p d?ng c?ng migration.
+Backend không tự áp dụng migration khi khởi động. Chờ SQL Server healthy, cấu hình connection string trong User Secrets trỏ tới database dự kiến, rồi từ thư mục gốc chạy `dotnet tool restore` và `dotnet ef database update --project backend/CvAdvisor.Api.csproj --startup-project backend/CvAdvisor.Api.csproj`. Kiểm tra database đích trước khi áp dụng.
 
-### D?ng d?ch v?
+## Bảo mật và giới hạn
 
-D?ng `docker compose stop` ?? d?ng container ho?c `docker compose down` ?? g? container v? network. C? hai c?ch ??u gi? named volume. Kh?ng d?ng `docker compose down -v` n?u mu?n gi? database v? file CV.
+- Không commit `.env`; chỉ dùng `.env.example` làm mẫu. Không ghi key hoặc mật khẩu vào source.
+- CV mẫu đặt trong `ai-service/samples/` được Git ignore. Chỉ dùng CV đã ẩn danh khi thử nghiệm.
+- CV được lưu trên máy chủ; nội dung CV được gửi tới dịch vụ AI bên ngoài để phân tích. Cân nhắc dữ liệu trước khi tải lên.
+- Kết quả AI và điểm khớp kỹ năng chỉ hỗ trợ tham khảo, không thay thế đánh giá nghề nghiệp của con người.
+- Công cụ thử AI độc lập nằm tại `ai-service/test_analyze.py`; không dùng thay luồng Backend chính.
+- Chưa có kiểm thử tự động bao phủ đầy đủ toàn bộ luồng; cấu hình provider/model và khả năng truy cập dịch vụ AI phụ thuộc nhà cung cấp bên ngoài.

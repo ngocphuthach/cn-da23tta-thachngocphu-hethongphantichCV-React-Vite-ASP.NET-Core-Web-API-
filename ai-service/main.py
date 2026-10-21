@@ -1,8 +1,9 @@
-"""FastAPI entry point for the CV Advisor AI service."""
+"""FastAPI entry point for the Career Compass AI service."""
 
 from __future__ import annotations
 
 import os
+import logging
 import secrets
 from contextlib import asynccontextmanager
 from typing import Annotated
@@ -27,6 +28,15 @@ from analyzer import (
     result_to_dict,
 )
 from llm_client import LLMError, load_config
+
+
+analysis_logger = logging.getLogger("ai_service.analysis")
+analysis_logger.setLevel(logging.INFO)
+if not analysis_logger.handlers:
+    analysis_handler = logging.StreamHandler()
+    analysis_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    analysis_logger.addHandler(analysis_handler)
+    analysis_logger.propagate = False
 
 
 # Bound multipart buffering and keep Starlette's upload spool in memory for every
@@ -108,7 +118,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="CV Advisor AI Service",
+    title="Career Compass AI Service",
     description="Dịch vụ AI phân tích CV và tư vấn nghề nghiệp.",
     version="0.2.0",
     lifespan=lifespan,

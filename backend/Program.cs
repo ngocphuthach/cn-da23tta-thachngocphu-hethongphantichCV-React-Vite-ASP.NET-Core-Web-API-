@@ -221,7 +221,7 @@ if (app.Environment.IsDevelopment())
     // Swagger UI (giao dien thu API) - doc tu file OpenAPI o tren
     app.UseSwaggerUI(options =>
     {
-        options.SwaggerEndpoint("/openapi/v1.json", "CV Advisor API v1");
+        options.SwaggerEndpoint("/openapi/v1.json", "Career Compass API v1");
     });
 }
 

@@ -1,16 +1,25 @@
-# React + Vite
+# Frontend Career Compass
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Giao diện được xây dựng bằng React và Vite, gọi ASP.NET Core API qua `VITE_API_BASE_URL`.
 
-Currently, two official plugins are available:
+## Lệnh phát triển
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```powershell
+npm install
+npm run dev
+npm run lint
+npm run build
+npm run preview
+```
 
-## React Compiler
+Trong phát triển, cấu hình `VITE_API_BASE_URL` trong file môi trường frontend; giá trị hiện dùng là địa chỉ Backend local `http://localhost:5000`. Đây là cấu hình public được nhúng vào bundle, không đặt secret tại đây.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Cấu trúc `src/`
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+- `components/`: bố cục, form dùng chung, route bảo vệ và skeleton.
+- `context/`: trạng thái xác thực và hook truy cập context.
+- `hooks/`: tiện ích giao diện, khả năng hiển thị trang và chuyển động.
+- `pages/`: trang chủ, xác thực, CV, lịch sử và kết quả phân tích.
+- `services/`: client HTTP và các hàm gọi API.
+- `App.jsx`, `main.jsx`: định tuyến, provider và điểm khởi chạy.
+- Các file CSS tại `src/`: kiểu giao diện dùng chung và chuyển động.

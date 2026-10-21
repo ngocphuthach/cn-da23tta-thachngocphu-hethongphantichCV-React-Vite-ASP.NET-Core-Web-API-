@@ -1,4 +1,5 @@
 using System.Data;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using CvAdvisor.Api.Data;
@@ -11,7 +12,8 @@ namespace CvAdvisor.Api.Services;
 public sealed class CvAnalysisService(
     CvCareerDbContext dbContext,
     CvFileStorage fileStorage,
-    AiServiceClient aiServiceClient)
+    AiServiceClient aiServiceClient,
+    ILogger<CvAnalysisService> logger)
 {
     private const int MaxResultJsonBytes = 1024 * 1024;
     private static readonly TimeSpan PendingTimeout = TimeSpan.FromMinutes(10);
@@ -19,6 +21,25 @@ public sealed class CvAnalysisService(
 
     public async Task<CvAnalysis> AnalyzeAsync(Guid userId, Guid cvId, CancellationToken cancellationToken)
     {
+        var totalTimer = Stopwatch.StartNew();
+        var aiServiceMs = 0d;
+        int? aiServiceHttpStatusCode = null;
+        var validationAndScoringMs = 0d;
+        var databaseSaveMs = 0d;
+
+        async Task SaveChangesAndMeasureAsync(CancellationToken token)
+        {
+            var timer = Stopwatch.StartNew();
+            try
+            {
+                await dbContext.SaveChangesAsync(token);
+            }
+            finally
+            {
+                databaseSaveMs += timer.Elapsed.TotalMilliseconds;
+            }
+        }
+
         CvAnalysis analysis;
         await using (var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable, cancellationToken))
@@ -54,7 +75,7 @@ public sealed class CvAnalysisService(
             {
                 if (pendingAnalyses.Any(item => item.Status == CvAnalysisStatus.Failed))
                 {
-                    await dbContext.SaveChangesAsync(cancellationToken);
+                    await SaveChangesAndMeasureAsync(cancellationToken);
                 }
 
                 await transaction.CommitAsync(cancellationToken);
@@ -63,7 +84,7 @@ public sealed class CvAnalysisService(
 
             if (pendingAnalyses.Count > 0)
             {
-                await dbContext.SaveChangesAsync(cancellationToken);
+                await SaveChangesAndMeasureAsync(cancellationToken);
             }
 
             analysis = new CvAnalysis
@@ -73,7 +94,7 @@ public sealed class CvAnalysisService(
                 CreatedAt = now,
             };
             dbContext.CVAnalyses.Add(analysis);
-            await dbContext.SaveChangesAsync(cancellationToken);
+            await SaveChangesAndMeasureAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
 
@@ -85,29 +106,57 @@ public sealed class CvAnalysisService(
                 .SingleAsync(cancellationToken);
 
             string aiJson;
-            if (cvSource.SourceType == CvSourceType.Manual)
+            var aiTimer = Stopwatch.StartNew();
+            try
             {
-                var manualContent = ManualCvContent.Deserialize(cvSource.ContentText)
-                    ?? throw new InvalidDataException();
-                var cvText = ManualCvContent.Compose(manualContent);
-                if (cvText.Length > ManualCvContent.MaxTotalCharacters)
+                if (cvSource.SourceType == CvSourceType.Manual)
                 {
-                    throw new InvalidDataException();
+                    var manualContent = ManualCvContent.Deserialize(cvSource.ContentText)
+                        ?? throw new InvalidDataException();
+                    var cvText = ManualCvContent.Compose(manualContent);
+                    if (cvText.Length > ManualCvContent.MaxTotalCharacters)
+                    {
+                        throw new InvalidDataException();
+                    }
+
+                    var aiResponse = await aiServiceClient.AnalyzeTextAsync(cvText, cancellationToken);
+                    aiJson = aiResponse.Json;
+                    aiServiceMs = aiResponse.ElapsedMilliseconds;
                 }
-
-                aiJson = await aiServiceClient.AnalyzeTextAsync(cvText, cancellationToken);
+                else
+                {
+                    var storagePath = fileStorage.GetFullPath(cvSource.FileStorageKey ?? throw new InvalidDataException());
+                    var extension = cvSource.FileExtension ?? throw new InvalidDataException();
+                    await using var cvStream = new FileStream(
+                        storagePath, FileMode.Open, FileAccess.Read, FileShare.Read,
+                        bufferSize: 81920, useAsync: true);
+                    var aiResponse = await aiServiceClient.AnalyzeAsync(cvStream, extension, cancellationToken);
+                    aiJson = aiResponse.Json;
+                    aiServiceMs = aiResponse.ElapsedMilliseconds;
+                }
             }
-            else
+            catch (AiServiceUnavailableException exception)
             {
-                var storagePath = fileStorage.GetFullPath(cvSource.FileStorageKey ?? throw new InvalidDataException());
-                var extension = cvSource.FileExtension ?? throw new InvalidDataException();
-                await using var cvStream = new FileStream(
-                    storagePath, FileMode.Open, FileAccess.Read, FileShare.Read,
-                    bufferSize: 81920, useAsync: true);
-                aiJson = await aiServiceClient.AnalyzeAsync(cvStream, extension, cancellationToken);
+                aiServiceHttpStatusCode = exception.HttpStatusCode;
+                aiServiceMs = exception.ElapsedMilliseconds;
+                throw;
+            }
+            finally
+            {
+                aiServiceMs = Math.Max(aiServiceMs, aiTimer.Elapsed.TotalMilliseconds);
             }
 
-            var (resultJson, overallScore) = await ValidateAndEnrichAsync(aiJson, cancellationToken);
+            var validationTimer = Stopwatch.StartNew();
+            string resultJson;
+            decimal? overallScore;
+            try
+            {
+                (resultJson, overallScore) = await ValidateAndEnrichAsync(aiJson, cancellationToken);
+            }
+            finally
+            {
+                validationAndScoringMs += validationTimer.Elapsed.TotalMilliseconds;
+            }
 
             analysis.Status = CvAnalysisStatus.Completed;
             analysis.ResultJson = resultJson;
@@ -115,7 +164,7 @@ public sealed class CvAnalysisService(
             analysis.CompletedAt = DateTime.UtcNow;
             analysis.AiProvider = null;
             analysis.ModelName = null;
-            await dbContext.SaveChangesAsync(cancellationToken);
+            await SaveChangesAndMeasureAsync(cancellationToken);
             return analysis;
         }
         catch
@@ -129,7 +178,7 @@ public sealed class CvAnalysisService(
             analysis.ModelName = null;
             try
             {
-                await dbContext.SaveChangesAsync(CancellationToken.None);
+                await SaveChangesAndMeasureAsync(CancellationToken.None);
             }
             catch
             {
@@ -138,6 +187,21 @@ public sealed class CvAnalysisService(
             }
 
             throw new AnalysisRunFailedException(analysis.AnalysisId);
+        }
+        finally
+        {
+            totalTimer.Stop();
+            logger.LogInformation(
+                "CvAnalysis timing AnalysisId={AnalysisId} AiServiceMs={AiServiceMs:F2} " +
+                "AiServiceHttpStatusCode={AiServiceHttpStatusCode} " +
+                "ValidationAndScoringMs={ValidationAndScoringMs:F2} DatabaseSaveMs={DatabaseSaveMs:F2} " +
+                "TotalMs={TotalMs:F2}",
+                analysis.AnalysisId,
+                aiServiceMs,
+                aiServiceHttpStatusCode,
+                validationAndScoringMs,
+                databaseSaveMs,
+                totalTimer.Elapsed.TotalMilliseconds);
         }
     }
 

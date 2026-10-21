@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Diagnostics;
 using CvAdvisor.Api.Configuration;
 using Microsoft.Extensions.Options;
 
@@ -10,7 +11,7 @@ public sealed class AiServiceClient(HttpClient httpClient, IOptions<AiServiceOpt
     private const int MaxResponseBytes = 1024 * 1024;
     private readonly AiServiceOptions _options = options.Value;
 
-    public async Task<string> AnalyzeAsync(
+    public async Task<AiServiceResponse> AnalyzeAsync(
         Stream cvStream,
         string extension,
         CancellationToken cancellationToken)
@@ -24,7 +25,7 @@ public sealed class AiServiceClient(HttpClient httpClient, IOptions<AiServiceOpt
         return await SendForJsonAsync(request, cancellationToken);
     }
 
-    public async Task<string> AnalyzeTextAsync(string cvText, CancellationToken cancellationToken)
+    public async Task<AiServiceResponse> AnalyzeTextAsync(string cvText, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "analyze-text")
         {
@@ -33,10 +34,11 @@ public sealed class AiServiceClient(HttpClient httpClient, IOptions<AiServiceOpt
         return await SendForJsonAsync(request, cancellationToken);
     }
 
-    private async Task<string> SendForJsonAsync(
+    private async Task<AiServiceResponse> SendForJsonAsync(
         HttpRequestMessage request,
         CancellationToken cancellationToken)
     {
+        var startedTimestamp = Stopwatch.GetTimestamp();
         request.Headers.TryAddWithoutValidation("X-Internal-Key", _options.InternalApiKey);
 
         HttpResponseMessage response;
@@ -49,18 +51,22 @@ public sealed class AiServiceClient(HttpClient httpClient, IOptions<AiServiceOpt
         }
         catch (HttpRequestException)
         {
-            throw new AiServiceUnavailableException();
+            throw new AiServiceUnavailableException(
+                null, Stopwatch.GetElapsedTime(startedTimestamp).TotalMilliseconds);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new AiServiceUnavailableException();
+            throw new AiServiceUnavailableException(
+                null, Stopwatch.GetElapsedTime(startedTimestamp).TotalMilliseconds);
         }
 
         using (response)
         {
             if (!response.IsSuccessStatusCode)
             {
-                throw new AiServiceUnavailableException();
+                throw new AiServiceUnavailableException(
+                    (int)response.StatusCode,
+                    Stopwatch.GetElapsedTime(startedTimestamp).TotalMilliseconds);
             }
 
             await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -73,17 +79,24 @@ public sealed class AiServiceClient(HttpClient httpClient, IOptions<AiServiceOpt
                 totalBytes += bytesRead;
                 if (totalBytes > MaxResponseBytes)
                 {
-                    throw new AiServiceUnavailableException();
+                    throw new AiServiceUnavailableException(
+                        (int)response.StatusCode,
+                        Stopwatch.GetElapsedTime(startedTimestamp).TotalMilliseconds);
                 }
 
                 await bounded.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
             }
 
-            return System.Text.Encoding.UTF8.GetString(bounded.GetBuffer(), 0, (int)bounded.Length);
+            var json = System.Text.Encoding.UTF8.GetString(bounded.GetBuffer(), 0, (int)bounded.Length);
+            return new AiServiceResponse(json, Stopwatch.GetElapsedTime(startedTimestamp).TotalMilliseconds);
         }
     }
 }
 
-public sealed class AiServiceUnavailableException : Exception
+public sealed record AiServiceResponse(string Json, double ElapsedMilliseconds);
+
+public sealed class AiServiceUnavailableException(int? httpStatusCode, double elapsedMilliseconds) : Exception
 {
+    public int? HttpStatusCode { get; } = httpStatusCode;
+    public double ElapsedMilliseconds { get; } = elapsedMilliseconds;
 }

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 import sys
+import time
 import zipfile
 from io import BytesIO
 from difflib import SequenceMatcher
@@ -30,6 +32,7 @@ PROJECT_ROOT = AI_SERVICE_DIR.parent
 JOBS_FILE = AI_SERVICE_DIR / "jobs.json"
 MAX_CV_BYTES = 5 * 1024 * 1024
 MAX_CV_TEXT_CHARS = 30_000
+analysis_logger = logging.getLogger("ai_service.analysis")
 
 
 class StrictModel(BaseModel):
@@ -563,17 +566,20 @@ def load_environment() -> None:
     load_dotenv(PROJECT_ROOT / ".env", override=False)
 
 
-def analyze(
+def _analyze_core(
     cv_text: str,
     catalog: dict[str, Any],
     skills: dict[str, str],
     positions: dict[str, dict[str, Any]],
     llm_config: LLMConfig,
     print_raw: bool = False,
+    stats: dict[str, Any] | None = None,
 ) -> AnalysisResult:
     if not cv_text.strip() or len(cv_text.encode("utf-16-le")) // 2 > MAX_CV_TEXT_CHARS:
         raise InvalidCVError("Nội dung CV phải có từ 1 đến 30.000 ký tự.")
     prompt = build_prompt(catalog, cv_text)
+    if stats is not None:
+        stats["cv_text_chars"] = len(cv_text)
     validation_error: AnalysisError | None = None
     for attempt in range(2):
         retry_prompt = prompt
@@ -584,20 +590,89 @@ def analyze(
                 "Hãy trả lại toàn bộ JSON đã sửa, đúng cấu trúc và mã trong jobs.json."
             )
 
-        response_text = generate_text(retry_prompt, llm_config, cv_text)
+        attempt_metrics: dict[str, int | float | None] = {"prompt_chars": len(retry_prompt)}
+        try:
+            response_text = generate_text(retry_prompt, llm_config, cv_text, attempt_metrics)
+        finally:
+            if stats is not None:
+                stats.setdefault("attempts", []).append(attempt_metrics)
         if print_raw:
             print(f"--- Phản hồi gốc lần {attempt + 1} ---")
             print(response_text)
 
+        validation_started_at = time.perf_counter()
         try:
             json_text = extract_json_text(response_text)
             return validate_result(json_text, skills, positions, cv_text)
         except AnalysisError as exc:
             validation_error = exc
+        finally:
+            if stats is not None:
+                stats["validation_ms"] = stats.get("validation_ms", 0.0) + (
+                    time.perf_counter() - validation_started_at
+                ) * 1000
 
     raise AnalysisError(
         f"JSON vẫn không hợp lệ sau 2 lần gọi. Lỗi cuối: {validation_error}"
     ) from validation_error
+
+
+def analyze(
+    cv_text: str,
+    catalog: dict[str, Any],
+    skills: dict[str, str],
+    positions: dict[str, dict[str, Any]],
+    llm_config: LLMConfig,
+    print_raw: bool = False,
+    *,
+    extraction_ms: float | None = None,
+    total_started_at: float | None = None,
+) -> AnalysisResult:
+    started_at = total_started_at if total_started_at is not None else time.perf_counter()
+    stats: dict[str, Any] = {"attempts": [], "validation_ms": 0.0, "cv_text_chars": len(cv_text)}
+    try:
+        return _analyze_core(
+            cv_text, catalog, skills, positions, llm_config, print_raw, stats
+        )
+    finally:
+        attempts = stats["attempts"]
+        fields = [
+            f"llm_attempts={len(attempts)}",
+            f"prompt_chars_total={sum(int(item.get('prompt_chars') or 0) for item in attempts)}",
+            f"response_chars_total={sum(int(item.get('response_chars') or 0) for item in attempts)}",
+        ]
+        input_tokens_total = 0
+        output_tokens_total = 0
+        has_input_tokens = False
+        has_output_tokens = False
+        for index, item in enumerate(attempts, start=1):
+            fields.extend((
+                f"llm_attempt_{index}_ms={float(item.get('elapsed_ms') or 0):.2f}",
+                f"prompt_chars_attempt_{index}={item.get('prompt_chars', 0)}",
+                f"response_chars_attempt_{index}={item.get('response_chars', 0)}",
+            ))
+            if item.get("input_tokens") is not None:
+                has_input_tokens = True
+                input_tokens_total += int(item["input_tokens"])
+                fields.append(f"input_tokens_attempt_{index}={item['input_tokens']}")
+            if item.get("output_tokens") is not None:
+                has_output_tokens = True
+                output_tokens_total += int(item["output_tokens"])
+                fields.append(f"output_tokens_attempt_{index}={item['output_tokens']}")
+        if has_input_tokens:
+            fields.append(f"input_tokens_total={input_tokens_total}")
+        if has_output_tokens:
+            fields.append(f"output_tokens_total={output_tokens_total}")
+        analysis_logger.info(
+            "analysis_timing model=%s extraction_ms=%s json_validation_ms=%.2f total_ms=%.2f "
+            "cv_text_chars=%d %s",
+            llm_config.model,
+            f"{extraction_ms:.2f}" if extraction_ms is not None else "n/a",
+            stats["validation_ms"],
+            (time.perf_counter() - started_at) * 1000,
+            stats["cv_text_chars"],
+            " ".join(fields),
+        )
 
 
 def analyze_cv_upload(
@@ -609,7 +684,21 @@ def analyze_cv_upload(
     llm_config: LLMConfig,
     print_raw: bool = False,
 ) -> AnalysisResult:
-    cv_text = extract_cv_text(filename, content)
+    total_started_at = time.perf_counter()
+    extraction_started_at = time.perf_counter()
+    try:
+        cv_text = extract_cv_text(filename, content)
+    except Exception:
+        extraction_ms = (time.perf_counter() - extraction_started_at) * 1000
+        analysis_logger.info(
+            "analysis_timing model=%s extraction_ms=%.2f json_validation_ms=0.00 total_ms=%.2f "
+            "cv_text_chars=0 llm_attempts=0 prompt_chars_total=0 response_chars_total=0",
+            llm_config.model,
+            extraction_ms,
+            (time.perf_counter() - total_started_at) * 1000,
+        )
+        raise
+    extraction_ms = (time.perf_counter() - extraction_started_at) * 1000
     return analyze(
         cv_text,
         catalog,
@@ -617,6 +706,8 @@ def analyze_cv_upload(
         positions,
         llm_config,
         print_raw=print_raw,
+        extraction_ms=extraction_ms,
+        total_started_at=total_started_at,
     )
 
 

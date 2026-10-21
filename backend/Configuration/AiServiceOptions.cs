@@ -8,5 +8,5 @@ public sealed class AiServiceOptions
 
     public string InternalApiKey { get; set; } = string.Empty;
 
-    public int TimeoutSeconds { get; set; } = 120;
+    public int TimeoutSeconds { get; set; } = 180;
 }

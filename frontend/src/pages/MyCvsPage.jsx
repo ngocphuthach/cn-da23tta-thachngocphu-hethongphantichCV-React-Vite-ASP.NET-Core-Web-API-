@@ -106,12 +106,11 @@ export function MyCvsPage() {
     const controller = new AbortController()
     abortRef.current = controller
     let timedOut = false
-    const timer = window.setTimeout(() => { timedOut = true; controller.abort() }, 150_000)
+    const timer = window.setTimeout(() => { timedOut = true; controller.abort() }, 210_000)
     setWorkingCvId(cvId)
     setStatuses((current) => ({ ...current, [cvId]: 'Pending' }))
     setError('')
     setTipIndex(0)
-    setTipsPaused(false)
     setAnalysisMessage('Đang phân tích CV. Quá trình có thể mất 1–2 phút; bạn có thể hủy nếu cần.')
     try {
       const result = await cvService.analyze(token, cvId, controller.signal)
@@ -122,7 +121,7 @@ export function MyCvsPage() {
       setAnalysisMessage('CV vẫn nằm trong danh sách. Bạn có thể xem lịch sử hoặc thử phân tích lại khi phù hợp.')
       await refresh()
       setError(timedOut
-        ? 'Đã quá 150 giây. Hãy kiểm tra lịch sử phân tích trước khi gửi yêu cầu khác.'
+        ? 'Đã quá 210 giây. Hãy kiểm tra lịch sử phân tích trước khi gửi yêu cầu khác.'
         : getFriendlyError(requestError))
     } finally {
       window.clearTimeout(timer)

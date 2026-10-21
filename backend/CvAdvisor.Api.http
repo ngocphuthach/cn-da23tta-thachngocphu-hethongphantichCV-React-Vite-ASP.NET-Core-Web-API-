@@ -1,6 +1,42 @@
-@CvAdvisor.Api_HostAddress = http://localhost:5228
+@CvAdvisor_Api_HostAddress = http://localhost:5000
+@accessToken = token-thay-the
+@email = email-thay-the@example.test
+@password = MatKhauThayThe123!
 
-GET {{CvAdvisor.Api_HostAddress}}/weatherforecast/
+### Backend liveness
+GET {{CvAdvisor_Api_HostAddress}}/health
 Accept: application/json
 
-###
+### Đăng ký (chỉ gửi khi muốn tạo tài khoản thử nghiệm)
+POST {{CvAdvisor_Api_HostAddress}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "fullName": "Tên thử nghiệm",
+  "password": "{{password}}"
+}
+
+### Đăng nhập
+POST {{CvAdvisor_Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### Thông tin tài khoản hiện tại (đặt accessToken bằng token thử nghiệm)
+GET {{CvAdvisor_Api_HostAddress}}/api/auth/me
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### Liệt kê CV của tôi
+GET {{CvAdvisor_Api_HostAddress}}/api/cvs
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### Liệt kê lịch sử phân tích
+GET {{CvAdvisor_Api_HostAddress}}/api/cv-analyses?page=1&pageSize=20
+Authorization: Bearer {{accessToken}}
+Accept: application/json

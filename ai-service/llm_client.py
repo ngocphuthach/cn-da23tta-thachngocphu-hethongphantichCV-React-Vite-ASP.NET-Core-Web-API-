@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 import re
+import time
 import unicodedata
 from typing import Any
 
@@ -231,7 +232,25 @@ def _extract_message_content(content: Any) -> str:
     return ""
 
 
-def generate_text(prompt: str, config: LLMConfig, cv_text: str = "") -> str:
+def _usage_count(usage: Any, *names: str) -> int | None:
+    if usage is None:
+        return None
+    for name in names:
+        value = usage.get(name) if isinstance(usage, dict) else getattr(usage, name, None)
+        if type(value) is int and value >= 0:
+            return value
+    return None
+
+
+def generate_text(
+    prompt: str,
+    config: LLMConfig,
+    cv_text: str = "",
+    metrics: dict[str, int | float | None] | None = None,
+) -> str:
+    started_at = time.perf_counter()
+    if metrics is not None:
+        metrics["prompt_chars"] = len(prompt)
     if config.provider == "openai_compatible":
         try:
             from openai import OpenAI
@@ -246,7 +265,13 @@ def generate_text(prompt: str, config: LLMConfig, cv_text: str = "") -> str:
                 temperature=0.2,
             )
             content = response.choices[0].message.content
+            if metrics is not None:
+                usage = getattr(response, "usage", None)
+                metrics["input_tokens"] = _usage_count(usage, "prompt_tokens", "input_tokens")
+                metrics["output_tokens"] = _usage_count(usage, "completion_tokens", "output_tokens")
         except Exception as exc:
+            if metrics is not None:
+                metrics["elapsed_ms"] = (time.perf_counter() - started_at) * 1000
             raise _provider_error(exc) from exc
 
         text = _extract_message_content(content)
@@ -264,9 +289,22 @@ def generate_text(prompt: str, config: LLMConfig, cv_text: str = "") -> str:
                     config={"temperature": 0.1},
                 )
             text = getattr(response, "text", "") or ""
+            if metrics is not None:
+                usage = getattr(response, "usage_metadata", None)
+                metrics["input_tokens"] = _usage_count(
+                    usage, "prompt_token_count", "input_token_count"
+                )
+                metrics["output_tokens"] = _usage_count(
+                    usage, "candidates_token_count", "output_token_count"
+                )
         except Exception as exc:
+            if metrics is not None:
+                metrics["elapsed_ms"] = (time.perf_counter() - started_at) * 1000
             raise _provider_error(exc) from exc
 
+    if metrics is not None:
+        metrics["response_chars"] = len(text)
+        metrics["elapsed_ms"] = (time.perf_counter() - started_at) * 1000
     if not text.strip():
         raise LLMError("LLM trả về nội dung rỗng.")
     return text
