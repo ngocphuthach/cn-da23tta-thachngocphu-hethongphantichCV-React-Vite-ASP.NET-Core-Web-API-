@@ -1,0 +1,101 @@
+# ===================================================
+#  .gitignore - Nhung thu KHONG commit len GitHub
+# ===================================================
+
+# ---- Secret / bien moi truong (QUAN TRONG) ----
+# .env chua mat khau & API key that -> KHONG bao gio commit
+.env
+.env.local
+.env.*.local
+*.env
+
+# Chi cho phep commit file mau .env.example
+!.env.example
+
+# ---- He dieu hanh ----
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# ---- IDE / Editor ----
+.vs/
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.swp
+*~
+
+# ===================================================
+#  .NET / ASP.NET Core  (backend)
+# ===================================================
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+*.dll
+*.pdb
+*.nupkg
+*.snupkg
+project.lock.json
+project.assets.json
+.vs/
+artifacts/
+TestResults/
+*.userprefs
+appsettings.*.local.json
+
+# ===================================================
+#  Node / React / Vite  (frontend)
+# ===================================================
+node_modules/
+dist/
+dist-ssr/
+build/
+.vite/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.eslintcache
+
+# ===================================================
+#  Python  (ai-service)
+# ===================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+.venv*/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.eggs/
+ai-service/samples/
+
+# ===================================================
+#  Docker / du lieu local
+# ===================================================
+# Thu muc chua du lieu SQL Server neu mount local
+mssql-data/
+*.bak
+
+# ---- Log tam khi chay/chay thu ----
+*.log
+logs/

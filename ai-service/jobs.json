@@ -1,0 +1,84 @@
+{
+  "jobPositions": [
+    {
+      "code": "backend-developer",
+      "name": "Lập trình viên Backend",
+      "skills": ["csharp", "aspnet-core", "rest-api", "sql-server", "ef-core", "git"]
+    },
+    {
+      "code": "frontend-developer",
+      "name": "Lập trình viên Frontend",
+      "skills": ["javascript", "typescript", "react", "html", "css", "rest-api", "git"]
+    },
+    {
+      "code": "fullstack-developer",
+      "name": "Lập trình viên Full-stack",
+      "skills": ["csharp", "aspnet-core", "sql-server", "ef-core", "typescript", "react", "git"]
+    },
+    {
+      "code": "mobile-developer",
+      "name": "Lập trình viên Mobile",
+      "skills": ["dotnet-maui", "kotlin", "swift", "rest-api", "git"]
+    },
+    {
+      "code": "data-analyst",
+      "name": "Chuyên viên Phân tích dữ liệu",
+      "skills": ["sql", "python", "excel", "power-bi", "statistics"]
+    },
+    {
+      "code": "data-engineer",
+      "name": "Kỹ sư Dữ liệu",
+      "skills": ["python", "sql", "etl", "data-warehouse", "docker", "git"]
+    },
+    {
+      "code": "qa-engineer",
+      "name": "Kỹ sư Kiểm thử phần mềm",
+      "skills": ["test-design", "manual-testing", "api-testing", "selenium", "sql", "git"]
+    },
+    {
+      "code": "devops-engineer",
+      "name": "Kỹ sư DevOps",
+      "skills": ["linux", "docker", "ci-cd", "cloud", "monitoring", "git"]
+    },
+    {
+      "code": "ai-ml-engineer",
+      "name": "Kỹ sư AI/ML",
+      "skills": ["python", "machine-learning", "statistics", "pandas", "scikit-learn", "sql"]
+    }
+  ],
+  "skills": [
+    { "code": "csharp", "name": "C#" },
+    { "code": "aspnet-core", "name": "ASP.NET Core" },
+    { "code": "rest-api", "name": "REST API" },
+    { "code": "sql-server", "name": "SQL Server" },
+    { "code": "ef-core", "name": "Entity Framework Core" },
+    { "code": "git", "name": "Git" },
+    { "code": "javascript", "name": "JavaScript" },
+    { "code": "typescript", "name": "TypeScript" },
+    { "code": "react", "name": "React" },
+    { "code": "html", "name": "HTML" },
+    { "code": "css", "name": "CSS" },
+    { "code": "dotnet-maui", "name": ".NET MAUI" },
+    { "code": "kotlin", "name": "Kotlin" },
+    { "code": "swift", "name": "Swift" },
+    { "code": "sql", "name": "SQL" },
+    { "code": "python", "name": "Python" },
+    { "code": "excel", "name": "Excel" },
+    { "code": "power-bi", "name": "Power BI" },
+    { "code": "statistics", "name": "Statistics" },
+    { "code": "etl", "name": "ETL" },
+    { "code": "data-warehouse", "name": "Data Warehouse" },
+    { "code": "docker", "name": "Docker" },
+    { "code": "test-design", "name": "Test Design" },
+    { "code": "manual-testing", "name": "Manual Testing" },
+    { "code": "api-testing", "name": "API Testing" },
+    { "code": "selenium", "name": "Selenium" },
+    { "code": "linux", "name": "Linux" },
+    { "code": "ci-cd", "name": "CI/CD" },
+    { "code": "cloud", "name": "Cloud" },
+    { "code": "monitoring", "name": "Monitoring" },
+    { "code": "machine-learning", "name": "Machine Learning" },
+    { "code": "pandas", "name": "Pandas" },
+    { "code": "scikit-learn", "name": "Scikit-learn" }
+  ]
+}

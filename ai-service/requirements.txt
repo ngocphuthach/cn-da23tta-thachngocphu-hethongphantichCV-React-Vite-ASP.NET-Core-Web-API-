@@ -1,0 +1,29 @@
+# ===================================================
+#  ai-service - Thu vien Python can thiet
+#  Cai dat:  pip install -r requirements.txt
+# ===================================================
+
+# Web framework de tao API (giong controller cua ASP.NET)
+fastapi==0.115.6
+
+# Parser multipart cho endpoint nhan file upload
+python-multipart
+
+# ASGI server de CHAY FastAPI (giong 'dotnet run' cua backend)
+uvicorn[standard]==0.34.0
+
+# Doc file .env (API key, cau hinh) vao bien moi truong
+python-dotenv==1.0.1
+
+# Google Gen AI SDK chinh thuc de goi Gemini API
+google-genai==2.28.0
+
+# SDK cho endpoint tuong thich OpenAI (vi du Token Harbor)
+openai
+
+# Model JSON dung de dinh nghia va kiem tra cau truc phan hoi
+pydantic==2.14.1
+
+# Trich xuat text tu CV PDF va DOCX
+PyMuPDF==1.28.2
+python-docx==1.2.0
