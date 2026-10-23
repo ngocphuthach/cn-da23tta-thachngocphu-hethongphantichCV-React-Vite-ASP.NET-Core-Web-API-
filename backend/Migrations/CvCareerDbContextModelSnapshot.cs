@@ -22,6 +22,78 @@ namespace CvAdvisor.Api.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("CvAdvisor.Api.Models.Entities.AdminCatalogAuditLog", b =>
+                {
+                    b.Property<long>("AuditId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("AuditId"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AfterJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("BeforeJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ObjectId")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("ObjectType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.HasKey("AuditId");
+
+                    b.HasIndex("ActorUserId")
+                        .HasDatabaseName("IX_AdminCatalogAuditLogs_ActorUserId");
+
+                    b.HasIndex("OccurredAt")
+                        .HasDatabaseName("IX_AdminCatalogAuditLogs_OccurredAt");
+
+                    b.ToTable("AdminCatalogAuditLogs", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_AdminCatalogAuditLogs_JsonSize", "([BeforeJson] IS NULL OR DATALENGTH([BeforeJson]) <= 16384) AND ([AfterJson] IS NULL OR DATALENGTH([AfterJson]) <= 16384)");
+                        });
+                });
+
+            modelBuilder.Entity("CvAdvisor.Api.Models.Entities.CatalogRevision", b =>
+                {
+                    b.Property<short>("RevisionId")
+                        .HasColumnType("smallint");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("RevisionId");
+
+                    b.ToTable("CatalogRevisions", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            RevisionId = (short)1,
+                            Version = 1L
+                        });
+                });
+
             modelBuilder.Entity("CvAdvisor.Api.Models.Entities.Cv", b =>
                 {
                     b.Property<Guid>("CvId")
@@ -90,6 +162,10 @@ namespace CvAdvisor.Api.Migrations
                     b.Property<Guid>("CvId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<string>("ModelName")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -114,6 +190,8 @@ namespace CvAdvisor.Api.Migrations
 
                     b.ToTable("CVAnalyses", null, t =>
                         {
+                            t.HasCheckConstraint("CK_CVAnalyses_FailureCode_Allowed", "[FailureCode] IS NULL OR [FailureCode] IN ('AiUnavailable', 'AiTimeout', 'AiRejected', 'InvalidResult', 'FileInvalid', 'Unknown')");
+
                             t.HasCheckConstraint("CK_CVAnalyses_OverallScore_Range", "[OverallScore] IS NULL OR ([OverallScore] >= 0 AND [OverallScore] <= 100)");
 
                             t.HasCheckConstraint("CK_CVAnalyses_ResultJson_IsJson", "[ResultJson] IS NULL OR ISJSON([ResultJson]) = 1");
@@ -152,6 +230,12 @@ namespace CvAdvisor.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.HasKey("JobPositionId");
 
@@ -262,6 +346,12 @@ namespace CvAdvisor.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(true);
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.HasKey("JobPositionId", "SkillId");
 
@@ -679,6 +769,12 @@ namespace CvAdvisor.Api.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.HasKey("SkillId");
 
                     b.HasIndex("Code")
@@ -985,13 +1081,40 @@ namespace CvAdvisor.Api.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("nvarchar(512)");
 
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("User");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.HasKey("UserId");
 
                     b.HasIndex("Email")
                         .IsUnique()
                         .HasDatabaseName("UX_Users_Email");
 
-                    b.ToTable("Users", (string)null);
+                    b.ToTable("Users", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Users_Role_Allowed", "[Role] IN ('User', 'Admin')");
+                        });
+                });
+
+            modelBuilder.Entity("CvAdvisor.Api.Models.Entities.AdminCatalogAuditLog", b =>
+                {
+                    b.HasOne("CvAdvisor.Api.Models.Entities.User", "Actor")
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Actor");
                 });
 
             modelBuilder.Entity("CvAdvisor.Api.Models.Entities.Cv", b =>

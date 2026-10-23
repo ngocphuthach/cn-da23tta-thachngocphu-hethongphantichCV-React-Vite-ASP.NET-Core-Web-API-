@@ -10,6 +10,8 @@ public sealed class JobPositionSkill
 
     public bool IsRequired { get; set; } = true;
 
+    public byte[] RowVersion { get; set; } = null!;
+
     public JobPosition JobPosition { get; set; } = null!;
 
     public Skill Skill { get; set; } = null!;

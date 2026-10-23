@@ -11,4 +11,6 @@ public sealed class Skill
     public string Category { get; set; } = string.Empty;
 
     public bool IsActive { get; set; } = true;
+
+    public byte[] RowVersion { get; set; } = null!;
 }

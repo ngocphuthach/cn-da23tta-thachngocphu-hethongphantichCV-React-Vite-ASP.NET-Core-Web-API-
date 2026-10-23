@@ -17,6 +17,10 @@ public sealed class CvCareerDbContext(DbContextOptions<CvCareerDbContext> option
 
     public DbSet<CvAnalysis> CVAnalyses => Set<CvAnalysis>();
 
+    public DbSet<CatalogRevision> CatalogRevisions => Set<CatalogRevision>();
+
+    public DbSet<AdminCatalogAuditLog> AdminCatalogAuditLogs => Set<AdminCatalogAuditLog>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -27,24 +31,29 @@ public sealed class CvCareerDbContext(DbContextOptions<CvCareerDbContext> option
         ConfigureJobPositions(modelBuilder);
         ConfigureJobPositionSkills(modelBuilder);
         ConfigureCVAnalyses(modelBuilder);
+        ConfigureCatalogAdministration(modelBuilder);
 
         modelBuilder.Entity<Skill>().HasData(CatalogSeedData.Skills);
         modelBuilder.Entity<JobPosition>().HasData(CatalogSeedData.JobPositions);
         modelBuilder.Entity<JobPositionSkill>().HasData(CatalogSeedData.JobPositionSkills);
+        modelBuilder.Entity<CatalogRevision>().HasData(new CatalogRevision { RevisionId = 1, Version = 1 });
     }
 
     private static void ConfigureUsers(ModelBuilder modelBuilder)
     {
         var entity = modelBuilder.Entity<User>();
-        entity.ToTable("Users");
+        entity.ToTable("Users", table => table.HasCheckConstraint(
+            "CK_Users_Role_Allowed", "[Role] IN ('User', 'Admin')"));
         entity.HasKey(user => user.UserId);
 
         entity.Property(user => user.Email).HasMaxLength(256).IsRequired();
         entity.HasIndex(user => user.Email).IsUnique().HasDatabaseName("UX_Users_Email");
         entity.Property(user => user.FullName).HasMaxLength(150).IsRequired();
         entity.Property(user => user.PasswordHash).HasMaxLength(512).IsRequired();
+        entity.Property(user => user.Role).HasMaxLength(20).IsRequired().HasDefaultValue(UserRoles.User);
         entity.Property(user => user.CreatedAt).HasColumnType("datetime2").HasDefaultValueSql("SYSUTCDATETIME()");
         entity.Property(user => user.IsActive).HasDefaultValue(true);
+        entity.Property(user => user.RowVersion).IsRowVersion();
 
         entity.HasMany(user => user.Cvs)
             .WithOne(cv => cv.User)
@@ -80,6 +89,7 @@ public sealed class CvCareerDbContext(DbContextOptions<CvCareerDbContext> option
         entity.Property(skill => skill.Name).HasMaxLength(100).IsRequired();
         entity.Property(skill => skill.Category).HasMaxLength(60).IsRequired();
         entity.Property(skill => skill.IsActive).HasDefaultValue(true);
+        entity.Property(skill => skill.RowVersion).IsRowVersion();
     }
 
     private static void ConfigureJobPositions(ModelBuilder modelBuilder)
@@ -95,6 +105,7 @@ public sealed class CvCareerDbContext(DbContextOptions<CvCareerDbContext> option
         entity.Property(position => position.Category).HasMaxLength(60).IsRequired();
         entity.Property(position => position.Description).HasMaxLength(1000);
         entity.Property(position => position.IsActive).HasDefaultValue(true);
+        entity.Property(position => position.RowVersion).IsRowVersion();
     }
 
     private static void ConfigureJobPositionSkills(ModelBuilder modelBuilder)
@@ -105,6 +116,7 @@ public sealed class CvCareerDbContext(DbContextOptions<CvCareerDbContext> option
 
         entity.Property(link => link.Importance).HasColumnType("tinyint").HasDefaultValue((byte)3);
         entity.Property(link => link.IsRequired).HasDefaultValue(true);
+        entity.Property(link => link.RowVersion).IsRowVersion();
 
         entity.HasOne(link => link.JobPosition)
             .WithMany(position => position.JobPositionSkills)
@@ -114,6 +126,32 @@ public sealed class CvCareerDbContext(DbContextOptions<CvCareerDbContext> option
         entity.HasOne(link => link.Skill)
             .WithMany()
             .HasForeignKey(link => link.SkillId)
+            .OnDelete(DeleteBehavior.NoAction);
+    }
+
+    private static void ConfigureCatalogAdministration(ModelBuilder modelBuilder)
+    {
+        var revision = modelBuilder.Entity<CatalogRevision>();
+        revision.ToTable("CatalogRevisions");
+        revision.HasKey(item => item.RevisionId);
+        revision.Property(item => item.RevisionId).ValueGeneratedNever();
+        revision.Property(item => item.Version).IsConcurrencyToken();
+
+        var audit = modelBuilder.Entity<AdminCatalogAuditLog>();
+        audit.ToTable("AdminCatalogAuditLogs", table => table.HasCheckConstraint(
+            "CK_AdminCatalogAuditLogs_JsonSize",
+            "([BeforeJson] IS NULL OR DATALENGTH([BeforeJson]) <= 16384) AND ([AfterJson] IS NULL OR DATALENGTH([AfterJson]) <= 16384)"));
+        audit.HasKey(item => item.AuditId);
+        audit.Property(item => item.AuditId).UseIdentityColumn();
+        audit.Property(item => item.OccurredAt).HasColumnType("datetime2").HasDefaultValueSql("SYSUTCDATETIME()");
+        audit.Property(item => item.Action).HasMaxLength(32).IsRequired();
+        audit.Property(item => item.ObjectType).HasMaxLength(32).IsRequired();
+        audit.Property(item => item.ObjectId).HasMaxLength(160).IsRequired();
+        audit.Property(item => item.BeforeJson).HasColumnType("nvarchar(max)");
+        audit.Property(item => item.AfterJson).HasColumnType("nvarchar(max)");
+        audit.HasIndex(item => item.OccurredAt).HasDatabaseName("IX_AdminCatalogAuditLogs_OccurredAt");
+        audit.HasIndex(item => item.ActorUserId).HasDatabaseName("IX_AdminCatalogAuditLogs_ActorUserId");
+        audit.HasOne(item => item.Actor).WithMany().HasForeignKey(item => item.ActorUserId)
             .OnDelete(DeleteBehavior.NoAction);
     }
 
@@ -128,6 +166,9 @@ public sealed class CvCareerDbContext(DbContextOptions<CvCareerDbContext> option
             table.HasCheckConstraint(
                 "CK_CVAnalyses_ResultJson_IsJson",
                 "[ResultJson] IS NULL OR ISJSON([ResultJson]) = 1");
+            table.HasCheckConstraint(
+                "CK_CVAnalyses_FailureCode_Allowed",
+                "[FailureCode] IS NULL OR [FailureCode] IN ('AiUnavailable', 'AiTimeout', 'AiRejected', 'InvalidResult', 'FileInvalid', 'Unknown')");
         });
         entity.HasKey(analysis => analysis.AnalysisId);
 
@@ -142,6 +183,9 @@ public sealed class CvCareerDbContext(DbContextOptions<CvCareerDbContext> option
         entity.Property(analysis => analysis.ResultJson).HasColumnType("nvarchar(max)");
         entity.Property(analysis => analysis.CreatedAt).HasColumnType("datetime2").HasDefaultValueSql("SYSUTCDATETIME()");
         entity.Property(analysis => analysis.CompletedAt).HasColumnType("datetime2");
+        entity.Property(analysis => analysis.FailureCode)
+            .HasConversion<string>()
+            .HasMaxLength(32);
         entity.HasIndex(analysis => analysis.CvId).HasDatabaseName("IX_CVAnalyses_CvId");
 
         entity.HasOne(analysis => analysis.Cv)

@@ -14,5 +14,7 @@ public sealed class JobPosition
 
     public bool IsActive { get; set; } = true;
 
+    public byte[] RowVersion { get; set; } = null!;
+
     public ICollection<JobPositionSkill> JobPositionSkills { get; set; } = new List<JobPositionSkill>();
 }

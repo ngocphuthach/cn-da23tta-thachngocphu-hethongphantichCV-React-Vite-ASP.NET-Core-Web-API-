@@ -13,6 +13,18 @@ using System.Text;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 
+if (args.Length == 1 && string.Equals(args[0], "admin-bootstrap", StringComparison.OrdinalIgnoreCase))
+{
+    Environment.ExitCode = await AdminBootstrap.RunAsync(resetExisting: false);
+    return;
+}
+
+if (args.Length == 1 && string.Equals(args[0], "admin-reset", StringComparison.OrdinalIgnoreCase))
+{
+    Environment.ExitCode = await AdminBootstrap.RunAsync(resetExisting: true);
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Trong môi trường phát triển, ghi log ra Console để không phụ thuộc quyền Windows Event Log.
@@ -39,6 +51,8 @@ builder.Services
         "Thiếu cấu hình Jwt:Audience trong appsettings.json.")
     .Validate(options => options.ExpirationMinutes > 0,
         "Jwt:ExpirationMinutes phải lớn hơn 0.")
+    .Validate(options => options.AdminTokenMinutes > 0,
+        "Jwt:AdminTokenMinutes must be greater than zero.")
     .ValidateOnStart();
 
 builder.Services
@@ -58,10 +72,19 @@ builder.Services
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromSeconds(30),
             NameClaimType = "name",
+            RoleClaimType = "role",
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.DefaultPolicy = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme)
+        .RequireAuthenticatedUser()
+        .AddRequirements(new ActiveUserRequirement())
+        .Build();
+});
+builder.Services.AddScoped<IAuthorizationHandler, ActiveUserAuthorizationHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, DatabaseRoleAuthorizationHandler>();
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.AddScoped<JwtTokenService>();
 
@@ -86,6 +109,10 @@ builder.Services.AddHttpClient<AiServiceClient>((serviceProvider, client) =>
 builder.Services.AddSingleton<CvUploadValidator>();
 builder.Services.AddSingleton<CvFileStorage>();
 builder.Services.AddScoped<CvAnalysisService>();
+builder.Services.AddScoped<CareerCatalogSnapshotReader>();
+builder.Services.AddScoped<CatalogAdminService>();
+builder.Services.AddScoped<AdminDashboardService>();
+builder.Services.AddScoped<AdminManagementService>();
 builder.Services.AddSingleton<AnalysisWorkQueue>();
 builder.Services.AddHostedService<CvAnalysisBackgroundWorker>();
 
@@ -107,6 +134,21 @@ if (manualCvRateLimit.PermitLimit <= 0 || manualCvRateLimit.WindowMinutes <= 0)
         "RateLimiting:ManualCv:PermitLimit và WindowMinutes phải lớn hơn 0.");
 }
 
+var adminApiRateLimit = builder.Configuration.GetSection("RateLimiting:AdminApi").Get<AdminApiRateLimitOptions>()
+    ?? new AdminApiRateLimitOptions();
+if (adminApiRateLimit.PermitLimit <= 0 || adminApiRateLimit.WindowMinutes <= 0)
+{
+    throw new InvalidOperationException("RateLimiting:AdminApi:PermitLimit và WindowMinutes phải lớn hơn 0.");
+}
+
+var adminLoginRateLimit = builder.Configuration.GetSection("RateLimiting:AdminLogin")
+    .Get<AdminLoginRateLimitOptions>() ?? new AdminLoginRateLimitOptions();
+if (adminLoginRateLimit.PermitLimit <= 0 || adminLoginRateLimit.WindowMinutes <= 0)
+{
+    throw new InvalidOperationException(
+        "RateLimiting:AdminLogin:PermitLimit and WindowMinutes must be greater than zero.");
+}
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -117,6 +159,16 @@ builder.Services.AddRateLimiter(options =>
             {
                 PermitLimit = 10,
                 Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+    options.AddPolicy("AdminLoginByIp", httpContext =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = adminLoginRateLimit.PermitLimit,
+                Window = TimeSpan.FromMinutes(adminLoginRateLimit.WindowMinutes),
                 QueueLimit = 0,
                 AutoReplenishment = true,
             }));
@@ -137,6 +189,16 @@ builder.Services.AddRateLimiter(options =>
             {
                 PermitLimit = manualCvRateLimit.PermitLimit,
                 Window = TimeSpan.FromMinutes(manualCvRateLimit.WindowMinutes),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+    options.AddPolicy("AdminByUser", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.User.FindFirstValue("sub") ?? "unauthenticated",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = adminApiRateLimit.PermitLimit,
+                Window = TimeSpan.FromMinutes(adminApiRateLimit.WindowMinutes),
                 QueueLimit = 0,
                 AutoReplenishment = true,
             }));

@@ -8,6 +8,16 @@ public enum CvAnalysisStatus
     Failed
 }
 
+public enum CvAnalysisFailureCode
+{
+    AiUnavailable,
+    AiTimeout,
+    AiRejected,
+    InvalidResult,
+    FileInvalid,
+    Unknown,
+}
+
 public sealed class CvAnalysis
 {
     public Guid AnalysisId { get; set; } = Guid.NewGuid();
@@ -27,6 +37,8 @@ public sealed class CvAnalysis
     public DateTime CreatedAt { get; set; }
 
     public DateTime? CompletedAt { get; set; }
+
+    public CvAnalysisFailureCode? FailureCode { get; set; }
 
     public Cv Cv { get; set; } = null!;
 }

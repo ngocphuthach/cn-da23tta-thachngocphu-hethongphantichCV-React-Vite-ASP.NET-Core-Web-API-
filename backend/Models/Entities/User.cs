@@ -17,9 +17,19 @@ public sealed class User
     // Chỉ lưu kết quả từ ASP.NET Core Identity PasswordHasher, không lưu mật khẩu thô.
     public string PasswordHash { get; set; } = string.Empty;
 
+    public string Role { get; set; } = UserRoles.User;
+
     public DateTime CreatedAt { get; set; }
 
     public bool IsActive { get; set; } = true;
 
+    public byte[] RowVersion { get; set; } = null!;
+
     public ICollection<Cv> Cvs { get; set; } = new List<Cv>();
+}
+
+public static class UserRoles
+{
+    public const string User = "User";
+    public const string Admin = "Admin";
 }

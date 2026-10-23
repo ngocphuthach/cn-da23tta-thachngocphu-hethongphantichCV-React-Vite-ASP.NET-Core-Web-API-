@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import os
 import logging
+import json
+import re
 import secrets
+import unicodedata
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from starlette.concurrency import run_in_threadpool
 from starlette.formparsers import MultiPartParser
 
@@ -24,7 +27,6 @@ from analyzer import (
     analyze,
     analyze_cv_upload,
     load_environment,
-    load_job_catalog,
     result_to_dict,
 )
 from llm_client import LLMError, load_config
@@ -41,14 +43,76 @@ if not analysis_logger.handlers:
 
 # Bound multipart buffering and keep Starlette's upload spool in memory for every
 # request accepted by this service. The CV itself is still capped at 5 MiB below.
-MAX_MULTIPART_BODY_BYTES = MAX_CV_BYTES + 64 * 1024
+MAX_CATALOG_BYTES = 512 * 1024
+MAX_MULTIPART_BODY_BYTES = MAX_CV_BYTES + MAX_CATALOG_BYTES + 64 * 1024
 # JSON may represent each non-ASCII character as a six-byte \\uXXXX escape.
-MAX_TEXT_REQUEST_BODY_BYTES = MAX_CV_TEXT_CHARS * 6 + 16 * 1024
+MAX_TEXT_REQUEST_BODY_BYTES = MAX_CV_TEXT_CHARS * 6 + MAX_CATALOG_BYTES + 16 * 1024
 MultiPartParser.spool_max_size = MAX_MULTIPART_BODY_BYTES + 1
 
 
 class AnalyzeTextRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     text: str
+    catalog: dict
+
+
+_CODE_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+
+def validate_catalog(payload):
+    """Validate the backend's bounded active catalog without exposing submitted data."""
+    try:
+        raw = payload if isinstance(payload, dict) else json.loads(payload)
+        encoded = json.dumps(raw, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    except (TypeError, ValueError, UnicodeError):
+        raise HTTPException(status_code=400, detail="Danh mục nghề và kỹ năng không hợp lệ.") from None
+    if len(encoded) > MAX_CATALOG_BYTES or not isinstance(raw, dict) or set(raw) != {"skills", "jobPositions"}:
+        raise HTTPException(status_code=400, detail="Danh mục nghề và kỹ năng không hợp lệ.")
+    skills = raw.get("skills")
+    positions = raw.get("jobPositions")
+    if not isinstance(skills, list) or len(skills) > 500:
+        raise HTTPException(status_code=400, detail="Danh mục nghề và kỹ năng không hợp lệ.")
+    if not isinstance(positions, list) or len(positions) > 200:
+        raise HTTPException(status_code=400, detail="Danh mục nghề và kỹ năng không hợp lệ.")
+
+    skills_by_code: dict[str, str] = {}
+    for skill in skills:
+        if not isinstance(skill, dict) or set(skill) != {"code", "name"}:
+            raise HTTPException(status_code=400, detail="Danh mục nghề và kỹ năng không hợp lệ.")
+        code, name = skill["code"], skill["name"]
+        if (not isinstance(code, str) or not _CODE_PATTERN.fullmatch(code)
+                or code in skills_by_code or not isinstance(name, str)
+                or len(code) > 60 or not name.strip() or len(name) > 100
+                or any(unicodedata.category(char) == "Cc" for char in name)):
+            raise HTTPException(status_code=400, detail="Danh mục nghề và kỹ năng không hợp lệ.")
+        skills_by_code[code] = name
+
+    positions_by_code: dict[str, dict] = {}
+    for position in positions:
+        if not isinstance(position, dict) or set(position) != {"code", "name", "skills"}:
+            raise HTTPException(status_code=400, detail="Danh mục nghề và kỹ năng không hợp lệ.")
+        code, name, linked = position["code"], position["name"], position["skills"]
+        if (not isinstance(code, str) or not _CODE_PATTERN.fullmatch(code)
+                or code in positions_by_code or not isinstance(name, str)
+                or len(code) > 50 or not name.strip() or len(name) > 120
+                or any(unicodedata.category(char) == "Cc" for char in name)
+                or not isinstance(linked, list)
+                or any(not isinstance(item, str) for item in linked)
+                or len(set(linked)) != len(linked)
+                or any(item not in skills_by_code for item in linked)):
+            raise HTTPException(status_code=400, detail="Danh mục nghề và kỹ năng không hợp lệ.")
+        positions_by_code[code] = position
+    return {"skills": skills, "jobPositions": positions}, skills_by_code, positions_by_code
+
+
+def require_internal_key(request: Request, provided_key: str | None) -> None:
+    expected_key = request.app.state.internal_api_key
+    if not expected_key:
+        raise HTTPException(status_code=503, detail="Cấu hình khóa nội bộ chưa sẵn sàng.")
+    if not secrets.compare_digest(
+        (provided_key or "").encode("utf-8"), expected_key.encode("utf-8")
+    ):
+        raise HTTPException(status_code=401, detail="X-Internal-Key không hợp lệ.")
 
 
 class InMemoryAnalyzeRequestMiddleware:
@@ -104,10 +168,6 @@ class InMemoryAnalyzeRequestMiddleware:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     load_environment()
-    catalog, skills_by_code, positions_by_code = load_job_catalog()
-    app.state.job_catalog = catalog
-    app.state.skills_by_code = skills_by_code
-    app.state.positions_by_code = positions_by_code
     try:
         app.state.llm_config = load_config()
     except LLMError:
@@ -160,16 +220,13 @@ def root() -> dict[str, str]:
 async def analyze_cv(
     request: Request,
     file: Annotated[UploadFile, File(description="CV PDF hoặc DOCX, tối đa 5 MB")],
+    catalog_payload: Annotated[str, Form(alias="catalog")],
     x_internal_key: Annotated[str | None, Header(alias="X-Internal-Key")] = None,
 ) -> dict:
-    expected_key = request.app.state.internal_api_key
-    provided_key = x_internal_key or ""
-    if expected_key and not secrets.compare_digest(
-        provided_key.encode("utf-8"), expected_key.encode("utf-8")
-    ):
-        raise HTTPException(status_code=401, detail="X-Internal-Key không hợp lệ.")
+    require_internal_key(request, x_internal_key)
     if request.app.state.llm_config is None:
         raise HTTPException(status_code=502, detail="Cấu hình provider LLM chưa đầy đủ.")
+    catalog, skills_by_code, positions_by_code = validate_catalog(catalog_payload)
 
     try:
         try:
@@ -183,9 +240,9 @@ async def analyze_cv(
             analyze_cv_upload,
             file.filename or "",
             content,
-            request.app.state.job_catalog,
-            request.app.state.skills_by_code,
-            request.app.state.positions_by_code,
+            catalog,
+            skills_by_code,
+            positions_by_code,
             request.app.state.llm_config,
         )
         return result_to_dict(result)
@@ -225,14 +282,10 @@ async def analyze_cv_text(
     request: Request,
     x_internal_key: Annotated[str | None, Header(alias="X-Internal-Key")] = None,
 ) -> dict:
-    expected_key = request.app.state.internal_api_key
-    provided_key = x_internal_key or ""
-    if expected_key and not secrets.compare_digest(
-        provided_key.encode("utf-8"), expected_key.encode("utf-8")
-    ):
-        raise HTTPException(status_code=401, detail="X-Internal-Key không hợp lệ.")
+    require_internal_key(request, x_internal_key)
     if request.app.state.llm_config is None:
         raise HTTPException(status_code=502, detail="Cấu hình provider LLM chưa đầy đủ.")
+    catalog, skills_by_code, positions_by_code = validate_catalog(payload.catalog)
     if not payload.text.strip() or len(payload.text.encode("utf-16-le")) // 2 > MAX_CV_TEXT_CHARS:
         raise HTTPException(status_code=400, detail="Nội dung CV phải có từ 1 đến 30.000 ký tự.")
 
@@ -240,9 +293,9 @@ async def analyze_cv_text(
         result = await run_in_threadpool(
             analyze,
             payload.text,
-            request.app.state.job_catalog,
-            request.app.state.skills_by_code,
-            request.app.state.positions_by_code,
+            catalog,
+            skills_by_code,
+            positions_by_code,
             request.app.state.llm_config,
         )
         return result_to_dict(result)

@@ -279,8 +279,11 @@ def validate_result(
             )
     if not isinstance(data["careerRecommendations"], list):
         raise AnalysisError("careerRecommendations phải là JSON array.")
-    if len(data["careerRecommendations"]) != 3:
-        raise AnalysisError("careerRecommendations phải gồm đúng 3 nghề phù hợp nhất.")
+    expected_recommendations = min(3, len(positions_by_code))
+    if len(data["careerRecommendations"]) != expected_recommendations:
+        raise AnalysisError(
+            f"careerRecommendations phải gồm {expected_recommendations} nghề phù hợp nhất theo danh mục đang hoạt động."
+        )
     previous_fit_score = float("inf")
     for index, recommendation in enumerate(data["careerRecommendations"]):
         require_exact_keys(recommendation, CareerRecommendation, f"careerRecommendations[{index}]")
@@ -534,7 +537,7 @@ def build_prompt(catalog: dict[str, Any], cv_text: str) -> str:
     cv_data_json = cv_data_json.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     return f"""Bạn là trợ lý phân tích CV. Nội dung CV có thể viết bằng tiếng Việt hoặc tiếng Anh.
 Chỉ trả về một JSON, dùng ĐÚNG các khóa trên, không thêm khóa khác, không đổi tên khóa, không kèm giải thích hay markdown.
-Các mã nghề và kỹ năng chỉ được lấy từ jobs.json. JSON bên dưới chỉ minh họa cấu trúc; các nghề trong ví dụ không mang ý nghĩa ưu tiên và không được sao chép thành kết luận về CV.
+Các mã nghề và kỹ năng chỉ được lấy từ danh mục đang hoạt động được cung cấp. JSON bên dưới chỉ minh họa cấu trúc; các nghề trong ví dụ không mang ý nghĩa ưu tiên và không được sao chép thành kết luận về CV.
 
 Ví dụ JSON đầy đủ:
 {schema_example}
@@ -548,7 +551,7 @@ Quy tắc:
 - "level" là chuỗi, chỉ nhận một trong ba giá trị "Beginner", "Intermediate", "Advanced" (viết đúng chữ hoa đầu, tiếng Anh). Không dùng số hay tiếng Việt.
 - evidence phải là MỘT trích dẫn nguyên văn ngắn (tối đa 15 từ), chép đúng từ CV. Không thêm nhãn như "Mục Kỹ năng:" hay "Tóm tắt:", không dùng "...", không ghép nhiều đoạn, không kèm nhận xét hay bình luận. Nếu không có câu trích phù hợp thì để evidence là chuỗi rỗng.
 - Nếu không đủ căn cứ để xếp level, chỉ chọn mức thấp nhất có đủ bằng chứng; không tạo giá trị ngoài ba lựa chọn.
-- careerRecommendations phải gồm đúng 3 nghề phù hợp nhất; sắp xếp theo fitScore giảm dần. Chỉ dùng jobPositionCode có trong jobs.json. fitScore là số từ 0 đến 100.
+- careerRecommendations gồm tối đa 3 nghề phù hợp nhất (một nghề cho mỗi nghề đang hoạt động nếu danh mục có dưới 3 nghề); sắp xếp theo fitScore giảm dần. Chỉ dùng jobPositionCode có trong danh mục được cung cấp. fitScore là số từ 0 đến 100.
 - missingSkills chỉ gồm kỹ năng thuộc nghề đó nhưng không tìm thấy bằng chứng trong CV; importance là số nguyên từ 1 đến 5 (5 là ưu tiên cao nhất); reason nói rõ đây là nội dung chưa thấy trong CV, không khẳng định ứng viên chắc chắn không có kỹ năng.
 - otherSkills chỉ chứa kỹ năng ngoài danh mục nhưng có bằng chứng trong CV, kèm tên và bằng chứng; không tự tạo mã cho chúng.
 - Nếu CV không có thông tin cho một danh sách, trả về danh sách rỗng. Không bịa để lấp dữ liệu.

@@ -43,6 +43,7 @@ public sealed class AuthController(
         {
             Email = normalizedEmail,
             FullName = request.FullName.Trim(),
+            Role = UserRoles.User,
         };
         user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
         dbContext.Users.Add(user);
@@ -111,5 +112,5 @@ public sealed class AuthController(
     }
 
     private static UserProfileResponse ToProfile(User user) =>
-        new(user.UserId, user.Email, user.FullName);
+        new(user.UserId, user.Email, user.FullName, user.Role);
 }

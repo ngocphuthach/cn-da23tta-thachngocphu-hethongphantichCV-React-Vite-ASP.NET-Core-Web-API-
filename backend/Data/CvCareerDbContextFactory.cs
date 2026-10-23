@@ -8,10 +8,14 @@ public sealed class CvCareerDbContextFactory : IDesignTimeDbContextFactory<CvCar
 {
     public CvCareerDbContext CreateDbContext(string[] args)
     {
-        var configuration = new ConfigurationBuilder()
-            .AddUserSecrets<CvCareerDbContextFactory>(optional: true)
-            .AddEnvironmentVariables()
-            .Build();
+        var configurationBuilder = new ConfigurationBuilder();
+        if (!string.Equals(
+            Environment.GetEnvironmentVariable("CVCAREER_SKIP_USER_SECRETS"), "true",
+            StringComparison.OrdinalIgnoreCase))
+        {
+            configurationBuilder.AddUserSecrets<CvCareerDbContextFactory>(optional: true);
+        }
+        var configuration = configurationBuilder.AddEnvironmentVariables().Build();
 
         var options = new DbContextOptionsBuilder<CvCareerDbContext>()
             .UseSqlServer(configuration.GetConnectionString("DefaultConnection"))

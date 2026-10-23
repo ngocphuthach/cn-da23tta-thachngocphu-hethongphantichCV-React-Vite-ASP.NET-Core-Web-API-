@@ -13,6 +13,7 @@ public sealed class CvAnalysisService(
     CvCareerDbContext dbContext,
     CvFileStorage fileStorage,
     AiServiceClient aiServiceClient,
+    CareerCatalogSnapshotReader catalogSnapshotReader,
     ILogger<CvAnalysisService> logger)
 {
     private const int MaxResultJsonBytes = 1024 * 1024;
@@ -46,6 +47,7 @@ public sealed class CvAnalysisService(
             expired.Status = CvAnalysisStatus.Failed;
             expired.ResultJson = BuildFailureResult("Yêu cầu phân tích đã quá hạn trong hàng đợi. Vui lòng thử lại.");
             expired.CompletedAt = now;
+            expired.FailureCode = CvAnalysisFailureCode.AiTimeout;
         }
 
         if (activeAnalyses.Any(item => item.Status == CvAnalysisStatus.Processing
@@ -80,6 +82,7 @@ public sealed class CvAnalysisService(
         analysis.Status = CvAnalysisStatus.Failed;
         analysis.ResultJson = BuildFailureResult(safeMessage);
         analysis.CompletedAt = DateTime.UtcNow;
+        analysis.FailureCode = CvAnalysisFailureCode.Unknown;
         await dbContext.SaveChangesAsync(CancellationToken.None);
     }
 
@@ -99,6 +102,7 @@ public sealed class CvAnalysisService(
             return;
         }
 
+        var failureCode = CvAnalysisFailureCode.Unknown;
         try
         {
             var analysis = await dbContext.CVAnalyses
@@ -107,6 +111,8 @@ public sealed class CvAnalysisService(
                 .Where(item => item.CvId == analysis.CvId)
                 .Select(item => new { item.SourceType, item.FileStorageKey, item.FileExtension, item.ContentText })
                 .SingleAsync(cancellationToken);
+            var catalogSnapshot = await catalogSnapshotReader.ReadActiveAsync(cancellationToken);
+            failureCode = CvAnalysisFailureCode.FileInvalid;
 
             string aiJson;
             var aiTimer = Stopwatch.StartNew();
@@ -122,7 +128,8 @@ public sealed class CvAnalysisService(
                         throw new InvalidDataException();
                     }
 
-                    var aiResponse = await aiServiceClient.AnalyzeTextAsync(cvText, cancellationToken);
+                    failureCode = CvAnalysisFailureCode.AiUnavailable;
+                    var aiResponse = await aiServiceClient.AnalyzeTextAsync(cvText, catalogSnapshot, cancellationToken);
                     aiJson = aiResponse.Json;
                     aiServiceMs = aiResponse.ElapsedMilliseconds;
                 }
@@ -133,7 +140,8 @@ public sealed class CvAnalysisService(
                     await using var cvStream = new FileStream(
                         storagePath, FileMode.Open, FileAccess.Read, FileShare.Read,
                         bufferSize: 81920, useAsync: true);
-                    var aiResponse = await aiServiceClient.AnalyzeAsync(cvStream, extension, cancellationToken);
+                    failureCode = CvAnalysisFailureCode.AiUnavailable;
+                    var aiResponse = await aiServiceClient.AnalyzeAsync(cvStream, extension, catalogSnapshot, cancellationToken);
                     aiJson = aiResponse.Json;
                     aiServiceMs = aiResponse.ElapsedMilliseconds;
                 }
@@ -149,12 +157,13 @@ public sealed class CvAnalysisService(
                 aiServiceMs = Math.Max(aiServiceMs, aiTimer.Elapsed.TotalMilliseconds);
             }
 
+            failureCode = CvAnalysisFailureCode.InvalidResult;
             var validationTimer = Stopwatch.StartNew();
             string resultJson;
             decimal? overallScore;
             try
             {
-                (resultJson, overallScore) = await ValidateAndEnrichAsync(aiJson, cancellationToken);
+                (resultJson, overallScore) = ValidateAndEnrich(aiJson, catalogSnapshot);
             }
             finally
             {
@@ -167,6 +176,8 @@ public sealed class CvAnalysisService(
             analysis.CompletedAt = DateTime.UtcNow;
             analysis.AiProvider = null;
             analysis.ModelName = null;
+            analysis.FailureCode = null;
+            failureCode = CvAnalysisFailureCode.Unknown;
             var saveTimer = Stopwatch.StartNew();
             try
             {
@@ -187,6 +198,13 @@ public sealed class CvAnalysisService(
         }
         catch (Exception exception)
         {
+            failureCode = exception switch
+            {
+                AiServiceUnavailableException { IsTimeout: true } => CvAnalysisFailureCode.AiTimeout,
+                AiServiceUnavailableException { HttpStatusCode: >= 400 and < 500 } => CvAnalysisFailureCode.AiRejected,
+                AiServiceUnavailableException => CvAnalysisFailureCode.AiUnavailable,
+                _ => failureCode,
+            };
             var safeMessage = GetSafeFailureReason(exception);
             try
             {
@@ -201,6 +219,7 @@ public sealed class CvAnalysisService(
                     analysis.CompletedAt = DateTime.UtcNow;
                     analysis.AiProvider = null;
                     analysis.ModelName = null;
+                    analysis.FailureCode = failureCode;
                     var saveTimer = Stopwatch.StartNew();
                     try
                     {
@@ -255,6 +274,7 @@ public sealed class CvAnalysisService(
         return query.ExecuteUpdateAsync(updates => updates
             .SetProperty(item => item.Status, CvAnalysisStatus.Failed)
             .SetProperty(item => item.ResultJson, failureResult)
+            .SetProperty(item => item.FailureCode, CvAnalysisFailureCode.AiTimeout)
             .SetProperty(item => item.CompletedAt, now), cancellationToken);
     }
 
@@ -278,9 +298,9 @@ public sealed class CvAnalysisService(
         _ => "Không thể hoàn tất phân tích CV. Vui lòng thử lại sau.",
     };
 
-    private async Task<(string Json, decimal? OverallScore)> ValidateAndEnrichAsync(
+    private static (string Json, decimal? OverallScore) ValidateAndEnrich(
         string aiJson,
-        CancellationToken cancellationToken)
+        CareerCatalogSnapshot catalogSnapshot)
     {
         if (System.Text.Encoding.UTF8.GetByteCount(aiJson) > MaxResultJsonBytes)
         {
@@ -327,33 +347,28 @@ public sealed class CvAnalysisService(
             }
         }
 
-        var knownSkillCodes = await dbContext.Skills.AsNoTracking()
-            .Select(skill => skill.Code)
-            .ToHashSetAsync(StringComparer.Ordinal, cancellationToken);
+        var knownSkillCodes = catalogSnapshot.Skills.Select(skill => skill.Code)
+            .ToHashSet(StringComparer.Ordinal);
         if (detectedCodes.Any(code => !knownSkillCodes.Contains(code)))
         {
             throw new InvalidDataException();
         }
 
-        var positions = await dbContext.JobPositions.AsNoTracking()
-            .Include(position => position.JobPositionSkills)
-                .ThenInclude(link => link.Skill)
-            .ToListAsync(cancellationToken);
-        if (positions.SelectMany(position => position.JobPositionSkills)
+        if (catalogSnapshot.JobPositions.SelectMany(position => position.Skills)
             .Any(link => link.Importance is < 1 or > 5))
         {
             throw new InvalidDataException();
         }
 
-        var ranking = positions.Select(position =>
+        var ranking = catalogSnapshot.JobPositions.Select(position =>
         {
-            var requiredSkills = position.JobPositionSkills.Where(link => link.IsRequired).ToArray();
+            var requiredSkills = position.Skills.Where(link => link.IsRequired).ToArray();
             var totalImportance = requiredSkills.Sum(link => (int)link.Importance);
             decimal? score = null;
             if (totalImportance > 0)
             {
                 var matchedImportance = requiredSkills
-                    .Where(link => detectedCodes.Contains(link.Skill.Code))
+                    .Where(link => detectedCodes.Contains(link.Code))
                     .Sum(link => (int)link.Importance);
                 score = Math.Round(100m * matchedImportance / totalImportance, 2, MidpointRounding.AwayFromZero);
             }
@@ -368,6 +383,8 @@ public sealed class CvAnalysisService(
         var enriched = JsonNode.Parse(aiJson)?.AsObject() ?? throw new InvalidDataException();
         enriched["backendRanking"] = JsonSerializer.SerializeToNode(ranking, ResultJsonOptions);
         enriched["evidenceUnverifiedCount"] = evidenceUnverifiedCount;
+        enriched["catalogVersion"] = catalogSnapshot.CatalogVersion;
+        enriched["scoringAlgorithm"] = "weighted-required-skills-v1";
         var serialized = enriched.ToJsonString();
         if (System.Text.Encoding.UTF8.GetByteCount(serialized) > MaxResultJsonBytes)
         {

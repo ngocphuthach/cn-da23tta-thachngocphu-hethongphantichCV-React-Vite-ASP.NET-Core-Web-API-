@@ -13,14 +13,28 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options)
     private readonly JwtOptions _options = options.Value;
 
     public (string Token, DateTime ExpiresAtUtc) CreateToken(User user)
+        => CreateToken(user, _options.ExpirationMinutes);
+
+    public (string Token, DateTime ExpiresAtUtc) CreateAdminToken(User user)
+    {
+        if (!user.IsActive || !string.Equals(user.Role, UserRoles.Admin, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Only Admin accounts can receive an Admin session token.");
+        }
+
+        return CreateToken(user, _options.AdminTokenMinutes);
+    }
+
+    private (string Token, DateTime ExpiresAtUtc) CreateToken(User user, int expirationMinutes)
     {
         var now = DateTime.UtcNow;
-        var expiresAt = now.AddMinutes(_options.ExpirationMinutes);
+        var expiresAt = now.AddMinutes(expirationMinutes);
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.UserId.ToString()),
             new Claim(JwtRegisteredClaimNames.Email, user.Email),
             new Claim(JwtRegisteredClaimNames.Name, user.FullName),
+            new Claim("role", user.Role),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         };
         var credentials = new SigningCredentials(
