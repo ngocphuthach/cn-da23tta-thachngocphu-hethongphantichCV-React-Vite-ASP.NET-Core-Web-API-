@@ -73,7 +73,7 @@ export function HomePage() {
   }
 
   return (
-    <div className="landing-page">
+    <div className={`landing-page${reducedMotion ? '' : ' motion-enabled'}`}>
       <header className="topbar landing-nav">
         <Link className="brand" to="/" aria-label="Career Compass, về trang chủ"><BrandMark /><span className="brand-word">Career Compass</span></Link>
         <button className="menu-toggle" type="button" aria-expanded={menuOpen} aria-controls="landing-menu" onClick={() => setMenuOpen((open) => !open)}>{menuOpen ? 'Đóng' : 'Menu'}</button>
@@ -91,12 +91,14 @@ export function HomePage() {
       <main>
         <section className="hero hero-redesign">
           <div className="hero-copy">
-            <p className="eyebrow">Phân tích CV · Định hướng CNTT</p>
-            <h1>Biết CV của bạn hợp với <span>nghề nào.</span></h1>
-            <p>Career Compass là la bàn nghề nghiệp dành cho CV của bạn. Bạn tải CV lên hoặc nhập thông tin trực tiếp, hệ thống sẽ đọc học vấn, kỹ năng và kinh nghiệm, rồi so với các vị trí trong lĩnh vực CNTT để cho biết nghề nào đang khớp nhất, còn thiếu kỹ năng gì và nên chỉnh CV ở đâu. Mỗi lần phân tích đều được lưu lại, để bạn theo dõi CV tiến bộ theo thời gian.</p>
+            <div className="badge-ai" style={{ marginBottom: 16 }}>
+              ✨ Career Compass · AI Career Copilot 2026
+            </div>
+            <h1>Khám phá độ khớp CV với <span>nghề IT tương lai.</span></h1>
+            <p>Career Compass ứng dụng Trí tuệ Nhân tạo để bóc tách năng lực, đối chiếu văn bản với danh mục kỹ năng chuẩn và tính toán mức độ phù hợp với các vị trí CNTT thực tế. Nhận ngay lộ trình nâng cấp kỹ năng và gợi ý tối ưu CV chính xác.</p>
             <div className="hero-actions">
-              <Link className="button button-primary" to={token ? '/cvs' : '/register'}>Bắt đầu phân tích <span aria-hidden="true">→</span></Link>
-              <a className="button button-secondary" href="#how-it-works" onClick={scrollToSection}>Xem cách hoạt động</a>
+              <Link className="button button-primary" to={token ? '/cvs' : '/register'}>Bắt đầu phân tích ngay →</Link>
+              <a className="button button-secondary" href="#how-it-works" onClick={scrollToSection}>Tìm hiểu cách hoạt động</a>
             </div>
             <p className="hero-note">Kết quả mang tính tham khảo, không thay thế tư vấn từ người thật.</p>
           </div>

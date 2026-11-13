@@ -8,43 +8,44 @@
   --ink: #0B1B3A;
   --muted: #4A5878;
   --surface: #ffffff;
-  --canvas: #F3F6FB;
-  --line: #D9E0EE;
-  --line-soft: #D9E0EE;
+  --canvas: #F8FAFC;
+  --line: #E2E8F0;
+  --line-soft: #EDF2F7;
   --primary: #2B50F5;
-  --primary-hover: #1B33B8;
-  --mint: #E4EAFF;
-  --mint-strong: #CAD5FF;
-  --chip-bg: #E4EAFF;
-  --chip-ink: #1B33B8;
-  --tag-bg: #FFF1D6;
-  --tag-ink: #7A4A00;
-  --amber-bright: #FFB020;
-  --navy-secondary: #C9D3EC;
+  --primary-hover: #1A38D6;
+  --primary-glow: rgba(43, 80, 245, 0.25);
+  --mint: #EEF2FF;
+  --mint-strong: #C7D2FE;
+  --chip-bg: #EEF2FF;
+  --chip-ink: #1E3A8A;
+  --tag-bg: #FEF3C7;
+  --tag-ink: #78350F;
+  --amber-bright: #F59E0B;
+  --navy-secondary: #CBD5E1;
   --rank-1: #2B50F5;
-  --rank-2: #6F88F8;
-  --rank-3: #9DAEFA;
-  --rank-4: #B9C5FB;
-  --accent: #FFB020;
-  --accent-soft: #FFF1D6;
-  --danger: #8c2933;
-  --danger-soft: #fbeaec;
-  --success: #087654;
-  --success-soft: #e4f3ea;
-  --amber: #7A4A00;
-  --amber-soft: #FFF1D6;
-  --plum: #1B33B8;
-  --plum-soft: #E4EAFF;
-  --warning: #7A4A00;
-  --warning-soft: #FFF1D6;
-  --shadow: 0 18px 50px rgba(11, 27, 58, 0.08);
-  --shadow-small: 0 8px 24px rgba(11, 27, 58, 0.07);
-  --shadow-hover: 0 18px 40px rgba(11, 27, 58, 0.1);
-  --shadow-primary: 0 10px 24px rgba(43, 80, 245, 0.3);
+  --rank-2: #4F46E5;
+  --rank-3: #818CF8;
+  --rank-4: #A5B4FC;
+  --accent: #F59E0B;
+  --accent-soft: #FEF3C7;
+  --danger: #DC2626;
+  --danger-soft: #FEF2F2;
+  --success: #059669;
+  --success-soft: #ECFDF5;
+  --amber: #B45309;
+  --amber-soft: #FEF3C7;
+  --plum: #4338CA;
+  --plum-soft: #EEF2FF;
+  --warning: #D97706;
+  --warning-soft: #FFFBEB;
+  --shadow: 0 20px 45px -10px rgba(15, 23, 42, 0.08), 0 8px 16px -6px rgba(15, 23, 42, 0.04);
+  --shadow-small: 0 4px 14px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
+  --shadow-hover: 0 22px 40px -10px rgba(43, 80, 245, 0.12), 0 8px 16px -4px rgba(15, 23, 42, 0.06);
+  --shadow-primary: 0 10px 25px -4px rgba(43, 80, 245, 0.35);
   --radius-card: 20px;
   --radius-control: 12px;
   --radius-privacy: 28px;
-  --container-width: 1200px;
+  --container-width: 1220px;
   --container-gutter: 32px;
   --space-1: 4px;
   --space-2: 8px;
@@ -60,7 +61,17 @@ html { scroll-behavior: auto; }
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
 }
-body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--canvas); }
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--canvas);
+  background-image:
+    radial-gradient(at 0% 0%, rgba(43, 80, 245, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(79, 70, 229, 0.04) 0px, transparent 50%),
+    radial-gradient(circle at 50% 120px, rgba(43, 80, 245, 0.05), transparent 70%);
+  background-attachment: fixed;
+}
 button, input, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; }

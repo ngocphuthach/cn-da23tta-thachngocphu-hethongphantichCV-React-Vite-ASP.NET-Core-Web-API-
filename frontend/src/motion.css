@@ -2,6 +2,7 @@
   --motion-duration-fast: 180ms;
   --motion-duration-notice: 240ms;
   --motion-duration-route: 190ms;
+  --motion-duration-route-slide: 220ms;
   --motion-duration-reveal: 440ms;
   --motion-duration-hero: 800ms;
   --motion-duration-pointer: 260ms;
@@ -23,6 +24,8 @@
   --motion-duration-rankbar: 1100ms;
   --motion-duration-wait-compass: 2200ms;
   --motion-duration-tip: 320ms;
+  --motion-duration-scan: 2800ms;
+  --motion-duration-count: 850ms;
   --motion-duration-check: 480ms;
   --motion-duration-profession: 500ms;
   --motion-interval-profession: 4000ms;
@@ -71,8 +74,13 @@
 @keyframes cc-wait-turn { to { transform: rotate(360deg); } }
 @keyframes cc-check-draw { to { stroke-dashoffset: 0; } }
 @keyframes cc-radar-enter { from { opacity: .45; transform: scale(.92); } to { opacity: 1; transform: scale(1); } }
+@keyframes cc-analysis-scan { from { opacity: 0; transform: translateY(-110%); } 18%,82% { opacity: .55; } to { opacity: 0; transform: translateY(110%); } }
+@keyframes cc-admin-slide-enter { from { opacity: .7; transform: translateX(12px); } to { opacity: 1; transform: translateX(0); } }
 
-.button { position: relative; isolation: isolate; overflow: hidden; transition: transform var(--motion-duration-fast) var(--motion-ease-standard); }
+.button { position: relative; isolation: isolate; overflow: hidden; transition: transform var(--motion-duration-fast) var(--motion-ease-standard), color var(--motion-duration-fast) var(--motion-ease-standard), background-color var(--motion-duration-fast) var(--motion-ease-standard); }
+.button:not(:disabled):hover { transform: translateY(-1px) scale(1.02); }
+.button-primary:not(:disabled):hover { background-color: #2346E8; }
+.button-secondary:not(:disabled):hover,.button-quiet:not(:disabled):hover { color: var(--primary); background-color: var(--mint); }
 .button::after { position: absolute; z-index: -1; inset: 0; content: ""; pointer-events: none; opacity: 0; transform: scale(.15); background: radial-gradient(circle,rgba(255,255,255,.35),transparent 70%); }
 .button:active:not(:disabled) { transform: translateY(1px) scale(.985); }
 .button:active:not(:disabled)::after { opacity: 1; transform: scale(1.8); animation: cc-ripple var(--motion-duration-ripple) var(--motion-ease-standard) both; }
@@ -80,6 +88,7 @@
 .step-card:hover,.feature-card:hover,.faq-card:hover,.sample-card:hover,.recommendation-card:hover,.skill-card:hover,.missing-card:hover { transform: translateY(-3px); }
 .notice.error,.notice.success,.notice.info { animation: cc-notice-enter var(--motion-duration-notice) var(--motion-ease-standard) both; }
 .route-enter,.landing-page,.auth-page { animation: cc-route-enter var(--motion-duration-route) var(--motion-ease-standard) both; }
+.page-content.route-enter { animation: cc-admin-slide-enter var(--motion-duration-route-slide) var(--motion-ease-standard) both; }
 .analysis-results > * { animation: cc-reveal var(--motion-duration-reveal) var(--motion-ease-standard) both; }
 .analysis-results > :nth-child(2) { animation-delay: var(--motion-delay-result-2); }
 .analysis-results > :nth-child(3) { animation-delay: var(--motion-delay-result-3); }
@@ -172,7 +181,7 @@
 .feature-card.pointer-active::before { opacity: 1; }
 
 /* Group 2: upload, result feedback, waiting state and user motion preference */
-.upload-panel { position: relative; transition: transform var(--motion-duration-fast) var(--motion-ease-standard); }
+.upload-panel { position: relative; transition: transform var(--motion-duration-fast) var(--motion-ease-standard), border-color var(--motion-duration-drop) var(--motion-ease-standard), background-color var(--motion-duration-drop) var(--motion-ease-standard); }
 .upload-panel.is-dragging { border-color: var(--primary); background: #E4EAFF; outline: 2px solid var(--primary); outline-offset: 3px; }
 .drop-icon { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border: 1px solid var(--line); border-radius: 12px; color: var(--primary); background: var(--mint); opacity: .75; transition: transform var(--motion-duration-drop) var(--motion-ease-standard), opacity var(--motion-duration-drop) var(--motion-ease-standard); }
 .drop-icon svg { width: 24px; height: 24px; }
@@ -190,6 +199,12 @@
 .ranking-table tbody tr:nth-child(2) .ranking-meter span { animation-delay: var(--motion-delay-rank-row); }
 .ranking-table tbody tr:nth-child(3) .ranking-meter span { animation-delay: var(--motion-delay-rank-row-third); }
 .analysis-wait { align-items: flex-start; }
+.analysis-wait { position: relative; isolation: isolate; overflow: hidden; }
+.analysis-wait::before { position: absolute; z-index: 0; inset: -80% 0; content: ""; pointer-events: none; background: linear-gradient(180deg,transparent 43%,rgba(43,80,245,.08) 50%,transparent 57%); animation: cc-analysis-scan var(--motion-duration-scan) var(--motion-ease-standard) infinite; }
+.analysis-wait > * { position: relative; z-index: 1; }
+.admin-main-content > .admin-page { animation: cc-admin-slide-enter var(--motion-duration-route-slide) var(--motion-ease-standard) both; }
+.admin-sidebar-nav a { transition: transform var(--motion-duration-fast) var(--motion-ease-standard), color var(--motion-duration-fast) var(--motion-ease-standard), background-color var(--motion-duration-fast) var(--motion-ease-standard); }
+.admin-sidebar-nav a:hover { transform: translateX(3px); }
 .wait-compass { width: 30px; height: 30px; flex: 0 0 auto; color: var(--primary); animation: cc-wait-turn var(--motion-duration-wait-compass) var(--motion-ease-standard) infinite; }
 .analysis-wait-copy { min-width: 0; flex: 1; }
 .analysis-wait-copy>p:first-child { margin: 0 0 5px; }
@@ -230,6 +245,8 @@
   .route-enter,.landing-page,.auth-page,.notice.error,.notice.success,.notice.info,.score-progress-animated { animation: none !important; }
   .sample-wrap.is-visible .sample-radar-data { opacity: 1; transform: none; }
   .wait-compass { animation: none !important; }
+  .analysis-wait::before { animation: none !important; opacity: 0 !important; }
+  .route-slide-enter,.admin-main-content .admin-page { animation: none !important; }
   .ranking-meter span { animation: none !important; transform: scaleX(var(--ranking-scale)); }
   .success-mark path { animation: none !important; stroke-dashoffset: 0; }
   .dialog-backdrop,.delete-dialog { animation: none !important; }

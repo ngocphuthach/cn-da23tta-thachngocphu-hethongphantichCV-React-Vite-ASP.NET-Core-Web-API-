@@ -27,7 +27,7 @@ export function AdminLayout() {
         <span className="admin-email">{admin?.email}</span>
         <button className="button button-quiet" onClick={logout}>Đăng xuất</button>
       </header>
-      <main className="admin-main-content"><Outlet /></main>
+      <main className="admin-main-content route-slide-enter"><Outlet /></main>
     </div>
   </div>
 }
