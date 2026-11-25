@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAdminAuth } from '../context/useAdminAuth'
 import { adminService } from '../services/adminService'
 import { ApiError } from '../services/apiClient'
@@ -15,6 +15,8 @@ function errorText(error) {
 
 export function AdminCatalogPage() {
   const { token } = useAdminAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const catalogTab = searchParams.get('tab') === 'skills' ? 'skills' : 'jobs'
   const [jobs, setJobs] = useState([])
   const [skills, setSkills] = useState([])
   const [selectedJobId, setSelectedJobId] = useState('')
@@ -111,10 +113,15 @@ export function AdminCatalogPage() {
 
   return (
     <section className="admin-page">
-      <header className="page-heading"><div><p className="eyebrow">QUẢN TRỊ · GIAI ĐOẠN A</p><h1>Danh mục nghề & kỹ năng</h1><p className="muted">Thay đổi được ghi nhật ký và áp dụng cho lượt phân tích mới.</p></div><Link className="button button-secondary" to="/admin/audit">Nhật ký thay đổi</Link></header>
+      <header className="page-heading"><div><p className="eyebrow">DANH MỤC CNTT</p><h1>Vị trí nghề & kỹ năng</h1><p className="muted">Thay đổi được ghi nhật ký và áp dụng cho các lượt phân tích mới.</p></div><Link className="button button-secondary" to="/admin/audit">Nhật ký thay đổi</Link></header>
       {error && <div role="alert" className="notice error">{error}</div>}{notice && <div role="status" className="notice success">{notice}</div>}
+      <nav className="admin-catalog-tabs" aria-label="Danh mục quản trị">
+        <button type="button" className={`button ${catalogTab === 'jobs' ? 'button-primary' : 'button-secondary'}`} aria-current={catalogTab === 'jobs' ? 'page' : undefined} onClick={() => setSearchParams({ tab: 'jobs' })}>Vị trí nghề</button>
+        <button type="button" className={`button ${catalogTab === 'skills' ? 'button-primary' : 'button-secondary'}`} aria-current={catalogTab === 'skills' ? 'page' : undefined} onClick={() => setSearchParams({ tab: 'skills' })}>Kỹ năng</button>
+      </nav>
       <div className="admin-grid">
-        <section className="panel admin-panel"><h2>Nghề CNTT</h2>
+        {catalogTab === 'jobs' && <>
+        <section id="jobs" className="panel admin-panel"><h2>Vị trí nghề CNTT</h2>
           <form className="admin-form" onSubmit={saveJob}>
             <label>Mã nghề<input maxLength={50} disabled={Boolean(editingJob)} value={jobForm.code} onChange={(e) => setJobForm({ ...jobForm, code: e.target.value })} required /></label>
             <label>Tên nghề<input maxLength={120} value={jobForm.name} onChange={(e) => setJobForm({ ...jobForm, name: e.target.value })} required /></label>
@@ -125,8 +132,10 @@ export function AdminCatalogPage() {
           </form>
           <div className="admin-list">{jobs.map((job) => <article className={`admin-item ${!job.isActive ? 'is-inactive' : ''}`} key={job.jobPositionId}><div><strong>{job.name}</strong><span className="code-label">{job.code} · {job.category}{job.isActive ? '' : ' · Đã vô hiệu hóa'}</span>{job.warnings?.map((warning) => <small className="notice warning compact" key={warning}>{warning}</small>)}</div><button className="button button-quiet" onClick={() => { setSelectedJobId(String(job.jobPositionId)); editJob(job) }}>Sửa</button></article>)}</div>
         </section>
+        </>}
 
-        <section className="panel admin-panel"><h2>Kỹ năng</h2>
+        {catalogTab === 'skills' && <>
+        <section id="skills" className="panel admin-panel"><h2>Kỹ năng</h2>
           <form className="admin-form" onSubmit={saveSkill}>
             <label>Mã kỹ năng<input maxLength={60} disabled={Boolean(editingSkill)} value={skillForm.code} onChange={(e) => setSkillForm({ ...skillForm, code: e.target.value })} required /></label>
             <label>Tên kỹ năng<input maxLength={100} value={skillForm.name} onChange={(e) => setSkillForm({ ...skillForm, name: e.target.value })} required /></label>
@@ -136,13 +145,16 @@ export function AdminCatalogPage() {
           </form>
           <div className="admin-list">{skills.map((skill) => <article className={`admin-item ${!skill.isActive ? 'is-inactive' : ''}`} key={skill.skillId}><div><strong>{skill.name}</strong><span className="code-label">{skill.code} · {skill.category}{skill.isActive ? '' : ' · Đã vô hiệu hóa'}</span></div><button className="button button-quiet" onClick={() => { setEditingSkill(skill); setSkillForm({ ...skill }) }}>Sửa</button></article>)}</div>
         </section>
+        </>}
       </div>
 
+      {catalogTab === 'jobs' && (
       <section className="panel admin-panel section-block"><h2>Liên kết kỹ năng với nghề</h2>
         <div className="admin-form admin-link-select"><label>Nghề<select value={selectedJobId} onChange={(e) => { setSelectedJobId(e.target.value); setEditingLink(null) }}>{jobs.map((job) => <option key={job.jobPositionId} value={job.jobPositionId}>{job.name}{job.isActive ? '' : ' (đã tắt)'}</option>)}</select></label>
           <form className="admin-form admin-link-form" onSubmit={saveLink}><label>Kỹ năng<select value={selectedSkillId} onChange={(e) => setSelectedSkillId(e.target.value)}><option value="">Chọn kỹ năng</option>{activeSkills.map((skill) => <option key={skill.skillId} value={skill.skillId}>{skill.name}</option>)}</select></label><label>Trọng số 1–5<input type="number" min="1" max="5" value={importance} onChange={(e) => setImportance(e.target.value)} required /></label><label className="admin-check"><input type="checkbox" checked={isRequired} onChange={(e) => setIsRequired(e.target.checked)} /> Bắt buộc</label><button className="button button-primary" disabled={busy}>{editingLink ? 'Lưu liên kết' : 'Thêm / cập nhật liên kết'}</button></form></div>
         {!selectedJob ? <p className="muted">Chưa có nghề để quản lý.</p> : <div className="table-panel"><table className="admin-table"><thead><tr><th>Kỹ năng</th><th>Trọng số</th><th>Bắt buộc</th><th>Thao tác</th></tr></thead><tbody>{selectedJob.skills.map((link) => <tr key={link.skillId}><td>{link.skillName}{!skills.find((skill) => skill.skillId === link.skillId)?.isActive && <small> · kỹ năng đã tắt</small>}</td><td>{link.importance}</td><td>{link.isRequired ? 'Có' : 'Không'}</td><td><button className="text-button" onClick={() => beginEditLink(link)}>Sửa</button><button className="text-button danger-text" onClick={() => removeLink(link)}>Gỡ</button></td></tr>)}</tbody></table>{selectedJob.skills.length === 0 && <p className="empty-state">Nghề này chưa có kỹ năng liên kết.</p>}</div>}
       </section>
+      )}
     </section>
   )
 }

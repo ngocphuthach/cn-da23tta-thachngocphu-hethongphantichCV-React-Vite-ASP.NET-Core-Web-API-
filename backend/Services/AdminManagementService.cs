@@ -104,7 +104,7 @@ public sealed class AdminManagementService(CvCareerDbContext dbContext)
     }
 
     public async Task<PagedAdminAnalysesDto> GetAnalysesAsync(
-        int page, int pageSize, string? status, CancellationToken cancellationToken)
+        int page, int pageSize, string? status, Guid? cvId, CancellationToken cancellationToken)
     {
         ValidatePaging(page, pageSize);
         var normalizedStatus = string.IsNullOrWhiteSpace(status) ? null : status.Trim();
@@ -114,6 +114,8 @@ public sealed class AdminManagementService(CvCareerDbContext dbContext)
 
         var cutoff = DateTime.UtcNow - PendingTimeout;
         var query = dbContext.CVAnalyses.AsNoTracking().AsQueryable();
+        if (cvId.HasValue)
+            query = query.Where(item => item.CvId == cvId.Value);
         if (normalizedStatus is not null)
         {
             if (normalizedStatus.Equals("Pending", StringComparison.OrdinalIgnoreCase))

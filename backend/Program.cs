@@ -113,6 +113,8 @@ builder.Services.AddScoped<CareerCatalogSnapshotReader>();
 builder.Services.AddScoped<CatalogAdminService>();
 builder.Services.AddScoped<AdminDashboardService>();
 builder.Services.AddScoped<AdminManagementService>();
+builder.Services.AddScoped<AdminCvService>();
+builder.Services.AddScoped<EmployerJobService>();
 builder.Services.AddSingleton<AnalysisWorkQueue>();
 builder.Services.AddHostedService<CvAnalysisBackgroundWorker>();
 

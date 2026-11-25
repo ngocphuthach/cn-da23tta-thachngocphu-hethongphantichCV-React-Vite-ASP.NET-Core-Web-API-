@@ -1,12 +1,13 @@
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { BrandMark } from './BrandMark'
-import { CompassIcon, FileTextIcon, ClockIcon } from './Icons'
+import { CompassIcon, FileTextIcon, ClockIcon, BriefcaseIcon, UserIcon } from './Icons'
 
 export function AppLayout() {
   const { user, signOut } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const recruiterTabActive = location.pathname === '/cvs' && new URLSearchParams(location.search).get('tab') === 'recruiter'
   const logout = () => { signOut(); navigate('/login', { replace: true }) }
 
   return (
@@ -21,13 +22,21 @@ export function AppLayout() {
             <CompassIcon size={19} />
             <span>Trang chủ</span>
           </NavLink>
-          <NavLink to="/cvs">
+          <NavLink to="/cvs" className={({ isActive }) => isActive && !recruiterTabActive ? 'active' : undefined}>
             <FileTextIcon size={19} />
             <span>Phân tích CV</span>
           </NavLink>
+          <Link to="/cvs?tab=recruiter" className={recruiterTabActive ? 'active' : undefined} aria-current={recruiterTabActive ? 'page' : undefined}>
+            <BriefcaseIcon size={19} />
+            <span>Yêu cầu tuyển dụng</span>
+          </Link>
           <NavLink to="/history">
             <ClockIcon size={19} />
             <span>Lịch sử</span>
+          </NavLink>
+          <NavLink to="/profile">
+            <UserIcon size={19} />
+            <span>Hồ sơ cá nhân</span>
           </NavLink>
         </nav>
         <div className="app-account-panel">
@@ -54,7 +63,9 @@ export function AppLayout() {
           <Outlet />
         </main>
         <footer className="footer app-footer">
-          <strong>Career Compass</strong><span>·</span> Kết quả phân tích mang tính chất tham khảo định hướng
+          <div className="app-footer-brand"><BrandMark /><strong>Career Compass</strong><span>·</span><b>La bàn kỹ năng cho hành trình nghề nghiệp CNTT</b></div>
+          <p>Nhìn rõ kỹ năng hiện có, khám phá hướng đi phù hợp và lưu lại từng bước hoàn thiện CV.</p>
+          <small>Kết quả là mức khớp kỹ năng do hệ thống tính, chỉ mang tính tham khảo.</small>
         </footer>
       </div>
     </div>

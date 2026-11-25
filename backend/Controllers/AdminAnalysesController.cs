@@ -17,9 +17,10 @@ public sealed class AdminAnalysesController(AdminManagementService adminService)
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] string? status = null,
+        [FromQuery] Guid? cvId = null,
         CancellationToken cancellationToken = default)
     {
-        try { return Ok(await adminService.GetAnalysesAsync(page, pageSize, status, cancellationToken)); }
+        try { return Ok(await adminService.GetAnalysesAsync(page, pageSize, status, cvId, cancellationToken)); }
         catch (AdminRequestException exception) { return BadRequest(new { message = exception.Message }); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch { return StatusCode(503, new { message = "Không thể tải danh sách phân tích lúc này." }); }

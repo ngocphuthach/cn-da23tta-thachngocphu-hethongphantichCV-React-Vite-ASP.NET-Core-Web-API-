@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using CvAdvisor.Api.Data;
 using CvAdvisor.Api.Models.Cvs;
 using CvAdvisor.Api.Models.Entities;
@@ -19,6 +20,8 @@ public sealed class CvsController(
     CvFileStorage fileStorage,
     CvAnalysisService analysisService,
     AnalysisWorkQueue analysisWorkQueue,
+    AiServiceClient aiServiceClient,
+    EmployerJobService employerJobService,
     ILogger<CvsController> logger) : ControllerBase
 {
     private const int MaxCvsPerUser = 50;
@@ -277,6 +280,161 @@ public sealed class CvsController(
         {
             return Conflict(new { message = "CV này đang được phân tích. Hãy thử lại sau." });
         }
+    }
+
+    public sealed record MatchJobRequest(
+        string? CompanyName,
+        string? PositionTitle,
+        string Requirements);
+
+    [HttpPost("{cvId:guid}/match-job")]
+    [EnableRateLimiting("CvAnalysisByUser")]
+    public async Task<IActionResult> MatchJob(
+        Guid cvId,
+        [FromBody] MatchJobRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(request?.Requirements))
+        {
+            return BadRequest(new { message = "Vui lòng nhập yêu cầu tuyển dụng của nhà tuyển dụng." });
+        }
+
+        var company = string.IsNullOrWhiteSpace(request.CompanyName) ? "Nhà tuyển dụng" : request.CompanyName.Trim();
+        var position = string.IsNullOrWhiteSpace(request.PositionTitle) ? "Vị trí tuyển dụng" : request.PositionTitle.Trim();
+        var requirements = request.Requirements.Trim();
+
+        return await MatchOwnedCvAsync(cvId, userId, null, company, position, requirements, cancellationToken);
+    }
+
+    [HttpPost("{cvId:guid}/match-posting/{postingId:int}")]
+    [EnableRateLimiting("CvAnalysisByUser")]
+    public async Task<IActionResult> MatchPosting(Guid cvId, int postingId, CancellationToken cancellationToken)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+        var posting = await employerJobService.GetMatchablePostingAsync(postingId, cancellationToken);
+        if (posting is null) return NotFound(new { message = "Tin tuyển dụng không còn hoạt động hoặc đã hết hạn." });
+        return await MatchOwnedCvAsync(cvId, userId, postingId, posting.Employer.Name, posting.Title,
+            posting.Requirements, cancellationToken);
+    }
+
+    private async Task<IActionResult> MatchOwnedCvAsync(Guid cvId, Guid userId, int? postingId, string company,
+        string position, string requirements, CancellationToken cancellationToken)
+    {
+        var cv = await dbContext.CVs.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.CvId == cvId && item.UserId == userId, cancellationToken);
+        if (cv is null) return NotFound();
+
+        try
+        {
+            AiServiceResponse response;
+            if (cv.SourceType == CvSourceType.Manual)
+            {
+                var manualContent = ManualCvContent.Deserialize(cv.ContentText) ?? throw new InvalidDataException();
+                var cvText = ManualCvContent.Compose(manualContent);
+                response = await aiServiceClient.MatchJobTextAsync(cvText, company, position, requirements, cancellationToken);
+            }
+            else
+            {
+                var storagePath = fileStorage.GetFullPath(cv.FileStorageKey ?? throw new InvalidDataException());
+                var extension = cv.FileExtension ?? throw new InvalidDataException();
+                await using var cvStream = new FileStream(
+                    storagePath, FileMode.Open, FileAccess.Read, FileShare.Read,
+                    bufferSize: 81920, useAsync: true);
+                response = await aiServiceClient.MatchJobAsync(cvStream, extension, company, position, requirements, cancellationToken);
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(response.Json);
+                var root = doc.RootElement;
+                decimal? score = root.TryGetProperty("matchScore", out var scoreProp) && scoreProp.TryGetDecimal(out var parsedScore)
+                    ? Math.Clamp(parsedScore, 0m, 100m)
+                    : null;
+                var verdict = root.TryGetProperty("verdict", out var verdictProp) && verdictProp.ValueKind == JsonValueKind.String
+                    ? (verdictProp.GetString() ?? "Khá phù hợp")
+                    : "Khá phù hợp";
+                if (verdict.Length > 150) verdict = verdict[..150];
+
+                var matchRecord = new CvJobMatch
+                {
+                    CvId = cvId,
+                    EmployerJobPostingId = postingId,
+                    CompanyName = company.Length > 200 ? company[..200] : company,
+                    PositionTitle = position.Length > 200 ? position[..200] : position,
+                    MatchScore = score,
+                    Verdict = verdict,
+                    ResultJson = response.Json,
+                };
+                dbContext.CvJobMatches.Add(matchRecord);
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+            catch (Exception ex) when (ex is JsonException or DbUpdateException)
+            {
+                logger.LogWarning(ex, "Could not persist CV job match history for CvId {CvId}.", cvId);
+            }
+
+            return Content(response.Json, "application/json");
+        }
+        catch (AiServiceUnavailableException ex)
+        {
+            logger.LogWarning(ex, "Could not match CV with recruiter requirements.");
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { message = "Dịch vụ AI tạm thời không thể phân tích độ khớp với nhà tuyển dụng. Vui lòng thử lại sau." });
+        }
+    }
+
+    public sealed record CvJobMatchHistoryDto(
+        Guid MatchId,
+        Guid CvId,
+        string CvTitle,
+        int? EmployerJobPostingId,
+        string CompanyName,
+        string PositionTitle,
+        decimal? MatchScore,
+        string Verdict,
+        string ResultJson,
+        DateTime CreatedAt);
+
+    [HttpGet("job-matches")]
+    public async Task<ActionResult<IReadOnlyList<CvJobMatchHistoryDto>>> ListJobMatches(CancellationToken cancellationToken)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+
+        var matches = await dbContext.CvJobMatches
+            .AsNoTracking()
+            .Where(item => item.Cv.UserId == userId)
+            .OrderByDescending(item => item.CreatedAt)
+            .Take(20)
+            .Select(item => new CvJobMatchHistoryDto(
+                item.MatchId,
+                item.CvId,
+                item.Cv.Title,
+                item.EmployerJobPostingId,
+                item.CompanyName,
+                item.PositionTitle,
+                item.MatchScore,
+                item.Verdict,
+                item.ResultJson,
+                item.CreatedAt))
+            .ToListAsync(cancellationToken);
+
+        return Ok(matches);
+    }
+
+    [HttpDelete("job-matches/{matchId:guid}")]
+    public async Task<IActionResult> DeleteJobMatch(Guid matchId, CancellationToken cancellationToken)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+
+        var match = await dbContext.CvJobMatches
+            .SingleOrDefaultAsync(item => item.MatchId == matchId && item.Cv.UserId == userId, cancellationToken);
+        if (match is null) return NotFound();
+
+        dbContext.CvJobMatches.Remove(match);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return NoContent();
     }
 
     [HttpDelete("{cvId:guid}")]

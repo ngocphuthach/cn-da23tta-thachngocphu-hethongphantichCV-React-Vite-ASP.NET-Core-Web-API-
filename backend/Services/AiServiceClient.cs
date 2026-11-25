@@ -39,6 +39,46 @@ public sealed class AiServiceClient(HttpClient httpClient, IOptions<AiServiceOpt
         return await SendForJsonAsync(request, cancellationToken);
     }
 
+    public async Task<AiServiceResponse> MatchJobAsync(
+        Stream cvStream,
+        string extension,
+        string companyName,
+        string positionTitle,
+        string requirements,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "match-job");
+        using var multipart = new MultipartFormDataContent();
+        using var fileContent = new StreamContent(cvStream);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        multipart.Add(fileContent, "file", $"cv{extension}");
+        multipart.Add(new StringContent(companyName), "companyName");
+        multipart.Add(new StringContent(positionTitle), "positionTitle");
+        multipart.Add(new StringContent(requirements), "requirements");
+        request.Content = multipart;
+        return await SendForJsonAsync(request, cancellationToken);
+    }
+
+    public async Task<AiServiceResponse> MatchJobTextAsync(
+        string cvText,
+        string companyName,
+        string positionTitle,
+        string requirements,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "match-job-text")
+        {
+            Content = JsonContent.Create(new
+            {
+                text = cvText,
+                companyName,
+                positionTitle,
+                requirements
+            }, options: JsonOptions),
+        };
+        return await SendForJsonAsync(request, cancellationToken);
+    }
+
     private static object ToAiCatalog(CareerCatalogSnapshot catalog) => new
     {
         skills = catalog.Skills.Select(skill => new { skill.Code, skill.Name }),

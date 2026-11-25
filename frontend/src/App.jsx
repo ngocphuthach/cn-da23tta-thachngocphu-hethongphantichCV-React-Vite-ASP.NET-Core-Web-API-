@@ -18,11 +18,14 @@ const RegisterPage = lazy(() => import('./pages/RegisterPage').then((module) => 
 const MyCvsPage = lazy(() => import('./pages/MyCvsPage').then((module) => ({ default: module.MyCvsPage })))
 const AnalysisHistoryPage = lazy(() => import('./pages/AnalysisHistoryPage').then((module) => ({ default: module.AnalysisHistoryPage })))
 const AnalysisResultPage = lazy(() => import('./pages/AnalysisResultPage').then((module) => ({ default: module.AnalysisResultPage })))
+const ProfilePage = lazy(() => import('./pages/ProfilePage').then((module) => ({ default: module.ProfilePage })))
 const AdminCatalogPage = lazy(() => import('./pages/AdminCatalogPage').then((module) => ({ default: module.AdminCatalogPage })))
 const AdminAuditPage = lazy(() => import('./pages/AdminAuditPage').then((module) => ({ default: module.AdminAuditPage })))
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage').then((module) => ({ default: module.AdminDashboardPage })))
 const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage').then((module) => ({ default: module.AdminUsersPage })))
 const AdminAnalysesPage = lazy(() => import('./pages/AdminAnalysesPage').then((module) => ({ default: module.AdminAnalysesPage })))
+const AdminCvsPage = lazy(() => import('./pages/AdminCvsPage').then((module) => ({ default: module.AdminCvsPage })))
+const AdminEmployersPage = lazy(() => import('./pages/AdminEmployersPage').then((module) => ({ default: module.AdminEmployersPage })))
 const AdminLoginPage = lazy(() => import('./pages/AdminLoginPage').then((module) => ({ default: module.AdminLoginPage })))
 
 function App() {
@@ -39,6 +42,7 @@ function App() {
             <Route element={<AppLayout />}>
               <Route path="/cvs" element={<MyCvsPage />} />
               <Route path="/history" element={<AnalysisHistoryPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
               <Route path="/analyses/:analysisId" element={<AnalysisResultPage />} />
             </Route>
           </Route>
@@ -50,6 +54,8 @@ function App() {
               <Route index element={<AdminDashboardPage />} />
               <Route path="catalog" element={<AdminCatalogPage />} />
               <Route path="users" element={<AdminUsersPage />} />
+              <Route path="cvs" element={<AdminCvsPage />} />
+              <Route path="employers" element={<AdminEmployersPage />} />
               <Route path="analyses" element={<AdminAnalysesPage />} />
               <Route path="audit" element={<AdminAuditPage />} />
               <Route path="*" element={<Navigate to="/admin" replace />} />

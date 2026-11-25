@@ -14,4 +14,11 @@ export const cvService = {
   analyze: (token, cvId, signal) => apiRequest(`/api/cvs/${cvId}/analyses`, { token, method: 'POST', signal }),
   listAnalyses: (token, page, pageSize) => apiRequest(`/api/cv-analyses?page=${page}&pageSize=${pageSize}`, { token }),
   getAnalysis: (token, analysisId, signal) => apiRequest(`/api/cv-analyses/${analysisId}`, { token, signal }),
+  matchJob: (token, cvId, data, signal) =>
+    apiRequest(`/api/cvs/${cvId}/match-job`, { token, method: 'POST', body: data, signal }),
+  matchPosting: (token, cvId, postingId, signal) =>
+    apiRequest(`/api/cvs/${cvId}/match-posting/${postingId}`, { token, method: 'POST', signal }),
+  listJobMatches: (token) => apiRequest('/api/cvs/job-matches', { token }),
+  deleteJobMatch: (token, matchId) => apiRequest(`/api/cvs/job-matches/${matchId}`, { token, method: 'DELETE' }),
+  listEmployerJobs: (token) => apiRequest('/api/employer-jobs', { token }),
 }

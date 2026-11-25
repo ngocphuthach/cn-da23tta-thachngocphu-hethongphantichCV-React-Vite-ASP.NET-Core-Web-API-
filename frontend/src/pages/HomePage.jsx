@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BrandMark } from '../components/BrandMark'
+import { ClockIcon, FileTextIcon, SparklesIcon, TargetIcon, ZapIcon } from '../components/Icons'
 import { useAuth } from '../context/useAuth'
 import { useReducedMotion } from '../hooks/useReducedMotion'
 import { useReveal } from '../hooks/useReveal'
@@ -18,13 +19,9 @@ const SAMPLE_RESULT = Object.freeze({
 const SKILL_RIBBON = ['JavaScript', 'React', 'C#', 'ASP.NET Core', 'SQL Server', 'Python', 'Docker', 'Git', 'CI/CD']
 
 function FeatureIcon({ kind }) {
-  const shapes = {
-    skills: <><path d="m5 12 4 4L19 6" /><path d="M4 4h16v16H4z" /></>,
-    ranking: <><path d="M4 19V5m0 14h17" /><path d="m7 15 4-4 3 2 6-7" /></>,
-    missing: <><circle cx="12" cy="12" r="9" /><path d="M12 8v5m0 3h.01" /></>,
-    history: <><path d="M4 11a8 8 0 1 1 1 5M4 5v6h6" /><path d="M12 7v5l3 2" /></>,
-  }
-  return <span className="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{shapes[kind]}</svg></span>
+  const icons = { skills: FileTextIcon, ranking: TargetIcon, missing: ZapIcon, history: ClockIcon }
+  const Icon = icons[kind] || SparklesIcon
+  return <span className="feature-icon" aria-hidden="true"><Icon size={23} /></span>
 }
 
 function SampleResultCard({ onReplay }) {
@@ -46,6 +43,54 @@ function SampleResultCard({ onReplay }) {
       <div className="sample-chip-section"><p>Kỹ năng còn thiếu</p><div className="sample-tags">{SAMPLE_RESULT.missingSkills.map((skill) => <span className="sample-tag sample-tag-missing" key={skill}>{skill}</span>)}</div></div>
       <button className="button button-quiet sample-replay" type="button" onClick={onReplay}>Xem lại</button>
     </article>
+  )
+}
+
+function HeroIllustration() {
+  return (
+    <div className="hero-illustration" role="img" aria-label="Minh họa CV và các kỹ năng được đối chiếu với vị trí nghề nghiệp">
+      <svg viewBox="0 0 560 430" aria-hidden="true" focusable="false">
+        <defs>
+          <linearGradient id="cv-sheet" x1="0" x2="1" y1="0" y2="1"><stop stopColor="#FFFFFF" /><stop offset="1" stopColor="#DCE5FF" /></linearGradient>
+          <linearGradient id="cv-orbit" x1="0" x2="1"><stop stopColor="#635BFF" /><stop offset="1" stopColor="#49C6FF" /></linearGradient>
+          <filter id="cv-shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="20" stdDeviation="16" floodColor="#02091F" floodOpacity=".38" /></filter>
+        </defs>
+        <ellipse cx="286" cy="348" rx="194" ry="37" fill="#030A26" opacity=".28" />
+        <ellipse cx="283" cy="327" rx="190" ry="39" fill="none" stroke="url(#cv-orbit)" strokeWidth="9" opacity=".82" transform="rotate(-13 283 327)" />
+        <ellipse cx="283" cy="327" rx="151" ry="27" fill="none" stroke="#8877FF" strokeWidth="3" opacity=".66" transform="rotate(-13 283 327)" />
+        <g filter="url(#cv-shadow)" transform="rotate(-8 282 196)">
+          <rect x="177" y="45" width="218" height="272" rx="20" fill="url(#cv-sheet)" />
+          <rect x="197" y="66" width="54" height="54" rx="17" fill="#DCE5FF" />
+          <circle cx="224" cy="86" r="12" fill="#6A7CF7" />
+          <path d="M205 111c3-12 12-18 19-18s17 6 20 18" fill="#8F9FFF" />
+          <rect x="265" y="73" width="95" height="10" rx="5" fill="#455BCE" />
+          <rect x="265" y="92" width="74" height="7" rx="3.5" fill="#AAB8E8" />
+          <path d="m202 151 7 7 14-16" fill="none" stroke="#3D63E9" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+          <rect x="236" y="149" width="126" height="8" rx="4" fill="#8A9AD4" />
+          <path d="m202 190 7 7 14-16" fill="none" stroke="#3D63E9" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+          <rect x="236" y="188" width="109" height="8" rx="4" fill="#8A9AD4" />
+          <path d="m202 229 7 7 14-16" fill="none" stroke="#3D63E9" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+          <rect x="236" y="227" width="117" height="8" rx="4" fill="#8A9AD4" />
+          <rect x="199" y="268" width="161" height="22" rx="11" fill="#E9EDFF" />
+          <rect x="208" y="275" width="50" height="8" rx="4" fill="#6378E8" />
+          <rect x="263" y="275" width="39" height="8" rx="4" fill="#8798EF" />
+          <rect x="307" y="275" width="42" height="8" rx="4" fill="#AFBAF1" />
+        </g>
+        <g className="hero-float-card" filter="url(#cv-shadow)">
+          <rect x="46" y="130" width="90" height="78" rx="18" fill="#243D82" stroke="#657DE0" />
+          <rect x="68" y="158" width="47" height="28" rx="5" fill="#CBD8FF" />
+          <path d="M73 157v-7a8 8 0 0 1 16 0v7m-8 13v6" fill="none" stroke="#F7FAFF" strokeWidth="5" strokeLinecap="round" />
+        </g>
+        <g className="hero-float-card hero-float-card-chart" filter="url(#cv-shadow)">
+          <rect x="410" y="146" width="100" height="80" rx="18" fill="#243D82" stroke="#657DE0" />
+          <path d="M428 207h63M431 197l15-16 14 8 20-24" fill="none" stroke="#8FCBFF" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M470 165h10v10" fill="none" stroke="#8FCBFF" strokeWidth="5" strokeLinecap="round" />
+        </g>
+        <circle cx="115" cy="86" r="4" fill="#8BCBFF" /><circle cx="451" cy="93" r="5" fill="#A59BFF" />
+        <path d="m143 270 5 12 12 5-12 5-5 12-5-12-12-5 12-5zM430 275l4 9 9 4-9 4-4 9-4-9-9-4 9-4z" fill="#C7D2FE" opacity=".9" />
+      </svg>
+      <span className="hero-illustration-caption"><span aria-hidden="true">✦</span> CV · Kỹ năng · Nghề nghiệp</span>
+    </div>
   )
 }
 
@@ -92,17 +137,17 @@ export function HomePage() {
         <section className="hero hero-redesign">
           <div className="hero-copy">
             <div className="badge-ai" style={{ marginBottom: 16 }}>
-              ✨ Career Compass · AI Career Copilot 2026
+              <SparklesIcon size={16} /> Career Compass · La bàn nghề nghiệp CNTT
             </div>
             <h1>Khám phá độ khớp CV với <span>nghề IT tương lai.</span></h1>
-            <p>Career Compass ứng dụng Trí tuệ Nhân tạo để bóc tách năng lực, đối chiếu văn bản với danh mục kỹ năng chuẩn và tính toán mức độ phù hợp với các vị trí CNTT thực tế. Nhận ngay lộ trình nâng cấp kỹ năng và gợi ý tối ưu CV chính xác.</p>
+            <p>Career Compass dùng AI để nhận diện kỹ năng, đối chiếu CV với danh mục vị trí CNTT và đưa ra gợi ý về các kỹ năng có thể bổ sung cùng những phần CV cần xem lại.</p>
             <div className="hero-actions">
               <Link className="button button-primary" to={token ? '/cvs' : '/register'}>Bắt đầu phân tích ngay →</Link>
               <a className="button button-secondary" href="#how-it-works" onClick={scrollToSection}>Tìm hiểu cách hoạt động</a>
             </div>
             <p className="hero-note">Kết quả mang tính tham khảo, không thay thế tư vấn từ người thật.</p>
           </div>
-          <div className="hero-art"><SampleResultCard key={sampleReplay} onReplay={() => setSampleReplay((value) => value + 1)} /></div>
+          <div className="hero-art"><HeroIllustration /></div>
         </section>
 
         <section className="skill-ribbon" aria-label="Một số kỹ năng CNTT được nhận diện">
@@ -111,6 +156,17 @@ export function HomePage() {
             <div className="skill-ribbon-track">
               {[0, 1].map((copy) => <ul className="skill-ribbon-group" tabIndex={copy === 0 ? 0 : undefined} aria-label={copy === 0 ? 'Kỹ năng CNTT tham khảo' : undefined} aria-hidden={copy === 1 ? 'true' : undefined} key={copy}>{Array.from({ length: 4 }, (_, repeat) => SKILL_RIBBON.map((skill) => <li key={`${repeat}-${skill}`} aria-hidden={copy === 1 || repeat > 0 ? 'true' : undefined}>{skill}</li>))}</ul>)}
             </div>
+          </div>
+        </section>
+
+        <section className="landing-section example-section" aria-labelledby="sample-result-title">
+          <div className="example-copy">
+            <p className="eyebrow">KẾT QUẢ THAM KHẢO</p>
+            <h2 id="sample-result-title">Một góc nhìn từ bản phân tích</h2>
+            <p>Các kết quả thực tế phụ thuộc vào nội dung CV, danh mục nghề nghiệp và thông tin do AI xử lý.</p>
+          </div>
+          <div className="example-card-wrap">
+            <SampleResultCard key={sampleReplay} onReplay={() => setSampleReplay((value) => value + 1)} />
           </div>
         </section>
 
@@ -159,7 +215,25 @@ export function HomePage() {
         <section className="landing-section final-cta"><div><p className="eyebrow">BẮT ĐẦU TỪ CV CỦA BẠN</p><h2>Sẵn sàng xem những góc nhìn về hồ sơ?</h2><p>Kết quả phân tích mang tính tham khảo.</p></div><Link className="button button-primary" to={token ? '/cvs' : '/register'}>Bắt đầu phân tích <span aria-hidden="true">→</span></Link></section>
       </main>
 
-      <footer className="landing-footer"><Link className="brand" to="/" aria-label="Career Compass, về trang chủ"><BrandMark /><span className="brand-word">Career Compass</span></Link><span>Quản lý CV và tham khảo định hướng nghề nghiệp CNTT</span></footer>
+      <footer className="landing-footer">
+        <div className="landing-footer-main">
+          <Link className="brand" to="/" aria-label="Career Compass, về trang chủ"><BrandMark /><span className="brand-word">Career Compass</span></Link>
+          <p className="landing-footer-tagline">Đọc CV bằng dữ liệu. Mở rộng góc nhìn nghề nghiệp.</p>
+          <p className="landing-footer-copy">Công cụ giúp bạn nhìn lại kỹ năng, đối chiếu các vị trí CNTT và theo dõi từng lần cập nhật hồ sơ.</p>
+        </div>
+        <div className="landing-footer-links">
+          <strong>Khám phá</strong>
+          <a href="#how-it-works" onClick={scrollToSection}>Cách hoạt động</a>
+          <a href="#features" onClick={scrollToSection}>Tính năng</a>
+          <a href="#privacy" onClick={scrollToSection}>Quyền riêng tư</a>
+        </div>
+        <div className="landing-footer-note">
+          <strong>Một góc nhìn để tham khảo</strong>
+          <p>Kết quả phản ánh mức khớp kỹ năng theo danh mục hiện có, không thay thế tư vấn nghề nghiệp từ người thật.</p>
+          <span>Email và số điện thoại được che trước khi gửi tới dịch vụ AI; thông tin CV khác vẫn được gửi để phân tích.</span>
+        </div>
+        <div className="landing-footer-bottom"><span>Career Compass <b>·</b> La bàn kỹ năng cho hành trình nghề CNTT</span><Link to={token ? '/cvs' : '/register'}>{token ? 'Mở không gian làm việc' : 'Bắt đầu với CV của bạn'} <span aria-hidden="true">→</span></Link></div>
+      </footer>
     </div>
   )
 }

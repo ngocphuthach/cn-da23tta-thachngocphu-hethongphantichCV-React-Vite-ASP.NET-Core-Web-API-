@@ -758,3 +758,90 @@ def extract_json_text(response_text: str) -> str:
     raise AnalysisError("Không tìm thấy JSON hợp lệ trong phản hồi LLM.")
 
 
+def match_cv_with_job(
+    cv_text: str,
+    company_name: str,
+    position_title: str,
+    requirements: str,
+    llm_config: LLMConfig,
+) -> dict[str, Any]:
+    """Match CV content directly with specific recruiter/job requirements."""
+    masked_cv = mask_pii(cv_text)
+    comp_clean = (company_name or "").strip() or "Nhà tuyển dụng"
+    pos_clean = (position_title or "").strip() or "Vị trí tuyển dụng"
+    req_clean = (requirements or "").strip()
+
+    prompt = f"""Bạn là chuyên gia tuyển dụng nhân sự CNTT. Hãy đối chiếu nội dung CV của ứng viên với YÊU CẦU CỦA NHÀ TUYỂN DỤNG để đánh giá mức độ phù hợp thực tế.
+
+NHÀ TUYỂN DỤNG: {comp_clean}
+VỊ TRÍ ỨNG TUYỂN: {pos_clean}
+
+YÊU CẦU TUYỂN DỤNG THỰC TẾ:
+{req_clean}
+
+NỘI DUNG CV CỦA ỨNG VIÊN:
+{masked_cv}
+
+Hãy phân tích khách quan và trả về DUY NHẤT một JSON object hợp lệ (không kèm markdown, không thêm chữ nào ngoài JSON) theo cấu trúc sau:
+{{
+  "companyName": "{comp_clean}",
+  "positionTitle": "{pos_clean}",
+  "matchScore": 80,
+  "verdict": "Rất phù hợp (Khả năng cao qua vòng hồ sơ)",
+  "summary": "Nhận xét tổng quan súc tích 2-3 câu về mức độ tương thích giữa hồ sơ và tiêu chí công ty.",
+  "matchedRequirements": [
+    {{
+      "requirement": "Tên yêu cầu cụ thể của nhà tuyển dụng mà ứng viên đã đáp ứng",
+      "evidence": "Trích dẫn ngắn gọn từ CV chứng minh điều này",
+      "status": "Đạt yêu cầu"
+    }}
+  ],
+  "missingRequirements": [
+    {{
+      "requirement": "Tiêu chí nhà tuyển dụng đòi hỏi mà CV chưa có hoặc chưa thể hiện rõ",
+      "importance": 4,
+      "reason": "Lý do vì sao tiêu chí này quan trọng với nhà tuyển dụng"
+    }}
+  ],
+  "recruiterAdvice": [
+    "Lời khuyên cụ thể 1 để ứng viên chỉnh sửa CV nhằm gây ấn tượng với nhà tuyển dụng này",
+    "Lời khuyên cụ thể 2..."
+  ]
+}}
+Ghi chú:
+- matchScore là số nguyên từ 0 đến 100.
+- importance là số nguyên từ 1 đến 5 (5 là quan trọng nhất).
+- verdict là chuỗi nhận xét: 'Rất phù hợp (Khả năng cao qua vòng hồ sơ)' | 'Khá phù hợp (Cần trau dồi thêm)' | 'Cơ bản (Cần bổ sung nhiều)' | 'Chưa phù hợp'.
+"""
+    raw_response = generate_text(prompt, llm_config, cv_text)
+    json_text = extract_json_text(raw_response)
+    try:
+        data = json.loads(json_text)
+        if not isinstance(data, dict):
+            raise ValueError()
+        data.setdefault("companyName", comp_clean)
+        data.setdefault("positionTitle", pos_clean)
+        data.setdefault("matchScore", 70)
+        data.setdefault("verdict", "Khá phù hợp")
+        data.setdefault("summary", "Ứng viên có các kỹ năng phù hợp một phần với yêu cầu tuyển dụng.")
+        data.setdefault("matchedRequirements", [])
+        data.setdefault("missingRequirements", [])
+        data.setdefault("recruiterAdvice", [])
+        return data
+    except Exception as exc:
+        raise AnalysisError("Không thể phân tích dữ liệu so khớp nhà tuyển dụng từ LLM.") from exc
+
+
+def match_cv_upload_with_job(
+    filename: str,
+    content: bytes,
+    company_name: str,
+    position_title: str,
+    requirements: str,
+    llm_config: LLMConfig,
+) -> dict[str, Any]:
+    text = extract_cv_text(filename, content)
+    return match_cv_with_job(text, company_name, position_title, requirements, llm_config)
+
+
+

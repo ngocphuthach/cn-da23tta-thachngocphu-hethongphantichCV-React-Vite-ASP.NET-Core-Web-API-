@@ -4,6 +4,7 @@ import { useAuth } from '../context/useAuth'
 import { authService } from '../services/authService'
 import { getFriendlyError } from '../services/apiClient'
 import { BrandMark } from './BrandMark'
+import { CompassIcon, FileTextIcon, TrendingUpIcon } from './Icons'
 
 export function AuthForm({ mode }) {
   const isRegister = mode === 'register'
@@ -45,7 +46,12 @@ export function AuthForm({ mode }) {
         <aside className="auth-story">
           <Link className="brand" to="/" aria-label="Career Compass, về trang chủ"><BrandMark /><span className="brand-word">Career Compass</span></Link>
           <div><p className="eyebrow">HỒ SƠ VÀ ĐỊNH HƯỚNG NGHỀ NGHIỆP</p><h2>Hồ sơ rõ ràng, lựa chọn có thêm góc nhìn.</h2><p>Khu vực tài khoản giúp bạn quản lý CV và xem lại lịch sử phân tích.</p></div>
-          <div className="auth-art" aria-hidden="true"><svg viewBox="0 0 360 210" fill="none"><path d="M25 177 111 111l62 33 76-97 83 70" stroke="#2B50F5" strokeWidth="3" strokeDasharray="7 8"/><circle cx="111" cy="111" r="15" fill="#fff" stroke="#2B50F5" strokeWidth="3"/><circle cx="249" cy="47" r="18" fill="#E4EAFF" stroke="#2B50F5" strokeWidth="3"/><path d="m247 39-5 12 13-6-8-6Z" fill="#FFB020"/><rect x="23" y="143" width="68" height="48" rx="9" fill="#fff" stroke="#D9E0EE" strokeWidth="2"/><path d="M37 157h39M37 169h28M37 180h33" stroke="#2B50F5" strokeWidth="3" strokeLinecap="round"/></svg></div>
+          <div className="auth-art" aria-hidden="true">
+            <div className="auth-art-orbit" />
+            <div className="auth-art-sheet"><FileTextIcon size={48} /><span /><span /><span /></div>
+            <div className="auth-art-badge auth-art-compass"><CompassIcon size={30} /></div>
+            <div className="auth-art-badge auth-art-trend"><TrendingUpIcon size={27} /></div>
+          </div>
         </aside>
         <div className="auth-form-side">
           <p className="eyebrow">CAREER COMPASS</p>

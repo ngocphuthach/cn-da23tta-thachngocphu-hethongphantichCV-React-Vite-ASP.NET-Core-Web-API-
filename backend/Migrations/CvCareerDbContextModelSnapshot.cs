@@ -198,6 +198,164 @@ namespace CvAdvisor.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("CvAdvisor.Api.Models.Entities.CvJobMatch", b =>
+                {
+                    b.Property<Guid>("MatchId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CompanyName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<Guid>("CvId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("EmployerJobPostingId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("MatchScore")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("PositionTitle")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ResultJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Verdict")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.HasKey("MatchId");
+
+                    b.HasIndex("CvId", "CreatedAt")
+                        .HasDatabaseName("IX_CvJobMatches_CvId_CreatedAt");
+
+                    b.ToTable("CvJobMatches", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CvJobMatches_ResultJson_IsJson", "ISJSON([ResultJson]) = 1");
+
+                            t.HasCheckConstraint("CK_CvJobMatches_Score_Range", "[MatchScore] IS NULL OR ([MatchScore] >= 0 AND [MatchScore] <= 100)");
+                        });
+                });
+
+            modelBuilder.Entity("CvAdvisor.Api.Models.Entities.Employer", b =>
+                {
+                    b.Property<int>("EmployerId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("EmployerId"));
+
+                    b.Property<string>("CareersUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("WebsiteUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("EmployerId");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Employers_Name");
+
+                    b.ToTable("Employers", (string)null);
+                });
+
+            modelBuilder.Entity("CvAdvisor.Api.Models.Entities.EmployerJobPosting", b =>
+                {
+                    b.Property<int>("EmployerJobPostingId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("EmployerJobPostingId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<DateTime>("DeadlineAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("EmployerId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Location")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("Requirements")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceUrl")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("EmployerJobPostingId");
+
+                    b.HasIndex("EmployerId", "IsActive", "DeadlineAt")
+                        .HasDatabaseName("IX_EmployerJobPostings_Employer_Active_Deadline");
+
+                    b.ToTable("EmployerJobPostings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_EmployerJobPostings_Requirements_Size", "DATALENGTH([Requirements]) <= 40000");
+                        });
+                });
+
             modelBuilder.Entity("CvAdvisor.Api.Models.Entities.JobPosition", b =>
                 {
                     b.Property<int>("JobPositionId")
@@ -1139,6 +1297,28 @@ namespace CvAdvisor.Api.Migrations
                     b.Navigation("Cv");
                 });
 
+            modelBuilder.Entity("CvAdvisor.Api.Models.Entities.CvJobMatch", b =>
+                {
+                    b.HasOne("CvAdvisor.Api.Models.Entities.Cv", "Cv")
+                        .WithMany()
+                        .HasForeignKey("CvId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Cv");
+                });
+
+            modelBuilder.Entity("CvAdvisor.Api.Models.Entities.EmployerJobPosting", b =>
+                {
+                    b.HasOne("CvAdvisor.Api.Models.Entities.Employer", "Employer")
+                        .WithMany("JobPostings")
+                        .HasForeignKey("EmployerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Employer");
+                });
+
             modelBuilder.Entity("CvAdvisor.Api.Models.Entities.JobPositionSkill", b =>
                 {
                     b.HasOne("CvAdvisor.Api.Models.Entities.JobPosition", "JobPosition")
@@ -1161,6 +1341,11 @@ namespace CvAdvisor.Api.Migrations
             modelBuilder.Entity("CvAdvisor.Api.Models.Entities.Cv", b =>
                 {
                     b.Navigation("Analyses");
+                });
+
+            modelBuilder.Entity("CvAdvisor.Api.Models.Entities.Employer", b =>
+                {
+                    b.Navigation("JobPostings");
                 });
 
             modelBuilder.Entity("CvAdvisor.Api.Models.Entities.JobPosition", b =>

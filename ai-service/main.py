@@ -27,6 +27,8 @@ from analyzer import (
     analyze,
     analyze_cv_upload,
     load_environment,
+    match_cv_with_job,
+    match_cv_upload_with_job,
     result_to_dict,
 )
 from llm_client import LLMError, load_config
@@ -125,7 +127,7 @@ class InMemoryAnalyzeRequestMiddleware:
         if not (
             scope["type"] == "http"
             and scope["method"] == "POST"
-            and scope["path"] in ("/analyze", "/analyze-text")
+            and scope["path"] in ("/analyze", "/analyze-text", "/match-job", "/match-job-text")
         ):
             await self.app(scope, receive, send)
             return
@@ -272,8 +274,6 @@ async def analyze_cv(
             status_code=502,
             detail="LLM không trả JSON hợp lệ sau lần thử lại.",
         ) from None
-    finally:
-        await file.close()
 
 
 @app.post("/analyze-text", tags=["analysis"])
@@ -320,3 +320,83 @@ async def analyze_cv_text(
             status_code=502,
             detail="LLM không trả JSON hợp lệ sau lần thử lại.",
         ) from None
+
+
+class MatchJobTextRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    text: str
+    companyName: str = ""
+    positionTitle: str = ""
+    requirements: str
+
+
+@app.post("/match-job", tags=["recruiter"])
+async def match_cv_job(
+    request: Request,
+    file: Annotated[UploadFile, File(description="CV PDF hoặc DOCX, tối đa 5 MB")],
+    companyName: Annotated[str, Form()] = "",
+    positionTitle: Annotated[str, Form()] = "",
+    requirements: Annotated[str, Form()] = "",
+    x_internal_key: Annotated[str | None, Header(alias="X-Internal-Key")] = None,
+) -> dict:
+    require_internal_key(request, x_internal_key)
+    if request.app.state.llm_config is None:
+        raise HTTPException(status_code=502, detail="Cấu hình provider LLM chưa đầy đủ.")
+    if not requirements.strip():
+        raise HTTPException(status_code=400, detail="Vui lòng cung cấp yêu cầu của nhà tuyển dụng.")
+
+    try:
+        try:
+            content = await file.read(MAX_CV_BYTES + 1)
+        except OSError:
+            raise InvalidCVError("Không đọc được file CV tải lên.") from None
+        if len(content) > MAX_CV_BYTES:
+            raise InvalidCVError("File CV vượt quá giới hạn 5 MB.")
+
+        return await run_in_threadpool(
+            match_cv_upload_with_job,
+            file.filename or "",
+            content,
+            companyName.strip(),
+            positionTitle.strip(),
+            requirements.strip(),
+            request.app.state.llm_config,
+        )
+    except InvalidCVError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except AnalyzerDependencyError:
+        raise HTTPException(status_code=500, detail="AI Service thiếu thư viện xử lý tài liệu.") from None
+    except LLMError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
+    except AnalysisError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
+    finally:
+        await file.close()
+
+
+@app.post("/match-job-text", tags=["recruiter"])
+async def match_cv_text_job(
+    payload: MatchJobTextRequest,
+    request: Request,
+    x_internal_key: Annotated[str | None, Header(alias="X-Internal-Key")] = None,
+) -> dict:
+    require_internal_key(request, x_internal_key)
+    if request.app.state.llm_config is None:
+        raise HTTPException(status_code=502, detail="Cấu hình provider LLM chưa đầy đủ.")
+    if not payload.requirements.strip():
+        raise HTTPException(status_code=400, detail="Vui lòng cung cấp yêu cầu của nhà tuyển dụng.")
+
+    try:
+        return await run_in_threadpool(
+            match_cv_with_job,
+            payload.text,
+            payload.companyName.strip(),
+            payload.positionTitle.strip(),
+            payload.requirements.strip(),
+            request.app.state.llm_config,
+        )
+    except LLMError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
+    except AnalysisError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
+

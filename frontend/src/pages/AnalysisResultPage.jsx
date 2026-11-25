@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { PageSkeleton } from '../components/PageSkeleton'
+import { AiScanningPanel } from '../components/AiScanningPanel'
 import { useAuth } from '../context/useAuth'
 import { cvService } from '../services/cvService'
 import { getFriendlyError } from '../services/apiClient'
@@ -243,6 +244,9 @@ export function AnalysisResultPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
+          {analysis?.status === 'Completed' && <button className="button button-primary no-print" type="button" onClick={() => window.print()}>
+            <span aria-hidden="true">⇩</span> In / lưu PDF
+          </button>}
           <Link className="button button-quiet" to="/cvs">
             CV của tôi
           </Link>
@@ -252,20 +256,17 @@ export function AnalysisResultPage() {
         </div>
       </section>
 
-      {analysis?.status !== 'Completed' && (
-        <div className={`notice ${analysis?.status === 'Failed' ? 'error' : 'info'}`} role="status">
-          {analysis?.status === 'Failed' ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <AlertCircleIcon size={20} />
-              <span>{analysis.failureReason || 'Lần phân tích này chưa hoàn tất. Bạn có thể thử lại từ trang CV của tôi.'}</span>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <SparklesIcon size={20} />
-              <span>Đang phân tích CV bằng AI. Kết quả sẽ tự động hiển thị khi hoàn tất...</span>
-            </div>
-          )}
+      {analysis?.status === 'Failed' && (
+        <div className="notice error" role="alert">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <AlertCircleIcon size={20} />
+            <span>{analysis.failureReason || 'Lần phân tích này chưa hoàn tất. Bạn có thể thử lại từ trang CV của tôi.'}</span>
+          </div>
         </div>
+      )}
+
+      {(analysis?.status === 'Pending' || analysis?.status === 'Processing') && (
+        <AiScanningPanel mode="cv" />
       )}
 
       {analysis?.status === 'Completed' && (
@@ -591,7 +592,7 @@ export function AnalysisResultPage() {
                         {text(item.issue)}
                       </strong>
                       <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--muted)', lineHeight: 1.6 }}>
-                        💡 {text(item.suggestion)}
+                        <SparklesIcon size={15} /> {text(item.suggestion)}
                       </p>
                     </div>
                   </article>

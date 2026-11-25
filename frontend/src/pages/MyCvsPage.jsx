@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { cvService } from '../services/cvService'
 import { getFriendlyError } from '../services/apiClient'
 import { readMotionInterval, useReducedMotion } from '../hooks/useReducedMotion'
+import { AiScanningPanel } from '../components/AiScanningPanel'
 import {
   SparklesIcon,
   UploadCloudIcon,
@@ -15,6 +16,7 @@ import {
   RefreshCwIcon,
   ClockIcon,
   XIcon,
+  BriefcaseIcon,
 } from '../components/Icons'
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024
@@ -37,6 +39,7 @@ const EMPTY_MANUAL = { title: '', education: '', skills: '', experience: '', pro
 export function MyCvsPage() {
   const { token } = useAuth()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [cvs, setCvs] = useState([])
   const [statuses, setStatuses] = useState({})
   const [latestAnalysisIds, setLatestAnalysisIds] = useState({})
@@ -49,23 +52,57 @@ export function MyCvsPage() {
   const [analysisMessage, setAnalysisMessage] = useState('')
   const [manual, setManual] = useState(EMPTY_MANUAL)
   const [manualSaving, setManualSaving] = useState(false)
+  const [employerJobs, setEmployerJobs] = useState([])
+  const [selectedPostingId, setSelectedPostingId] = useState('')
+  const [manualJobMode, setManualJobMode] = useState(false)
   const [editingCvId, setEditingCvId] = useState(null)
   const [draggingFile, setDraggingFile] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [tipIndex, setTipIndex] = useState(0)
   const [activeAnalysisId, setActiveAnalysisId] = useState(null)
-  const [activeTab, setActiveTab] = useState('upload') // 'upload' | 'manual'
+  const [baseTab, setBaseTab] = useState('upload') // 'upload' | 'manual'
+  const activeTab = searchParams.get('tab') === 'recruiter' ? 'recruiter' : baseTab
+
+  // Recruiter matching state
+  const [matchCvId, setMatchCvId] = useState('')
+  const [matchCompany, setMatchCompany] = useState('')
+  const [matchPosition, setMatchPosition] = useState('')
+  const [matchRequirements, setMatchRequirements] = useState('')
+  const [matchingJob, setMatchingJob] = useState(false)
+  const [matchResult, setMatchResult] = useState(null)
+  const [matchError, setMatchError] = useState('')
+  const [jobMatches, setJobMatches] = useState([])
+
   const activeJobRef = useRef(null)
   const cancelDeleteRef = useRef(null)
   const confirmDeleteRef = useRef(null)
   const reducedMotion = useReducedMotion()
 
+  function selectTab(tab) {
+    if (tab === 'recruiter') {
+      setSearchParams({ tab: 'recruiter' }, { replace: true })
+      return
+    }
+    setBaseTab(tab)
+    setSearchParams({}, { replace: true })
+  }
+
   const refresh = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const items = await cvService.listCvs(token)
+      const [jobs, matches, items] = await Promise.all([
+        cvService.listEmployerJobs(token).catch(() => []),
+        cvService.listJobMatches(token).catch(() => []),
+        cvService.listCvs(token),
+      ])
+      setEmployerJobs(jobs)
+      setJobMatches(matches)
+      setSelectedPostingId((current) => current || String(jobs[0]?.employerJobPostingId || ''))
       setCvs(items)
+      if (items.length > 0 && !matchCvId) {
+        setMatchCvId(items[0].cvId)
+      }
       const pairs = await Promise.all(items.map(async (cv) => {
         try {
           const analyses = await cvService.listCvAnalyses(token, cv.cvId)
@@ -84,7 +121,7 @@ export function MyCvsPage() {
       }
     } catch (requestError) { setError(getFriendlyError(requestError)) }
     finally { setLoading(false) }
-  }, [token])
+  }, [token, matchCvId])
 
   useEffect(() => {
     if (!activeAnalysisId || !workingCvId) return undefined
@@ -203,6 +240,43 @@ export function MyCvsPage() {
     }
   }
 
+  async function runRecruiterMatch(e) {
+    e.preventDefault()
+    setMatchError('')
+    setMatchResult(null)
+
+    const targetCvId = matchCvId || cvs[0]?.cvId
+    if (!targetCvId) {
+      setMatchError('Vui lòng chọn hoặc tải lên một CV để đối chiếu.')
+      return
+    }
+    if (!manualJobMode && !selectedPostingId) {
+      setMatchError('Hiện chưa có tin tuyển dụng đang mở để đối chiếu. Bạn có thể dán yêu cầu tuyển dụng thủ công.')
+      return
+    }
+    if (manualJobMode && !matchRequirements.trim()) {
+      setMatchError('Vui lòng nhập các tiêu chí/yêu cầu tuyển dụng của Nhà tuyển dụng.')
+      return
+    }
+
+    setMatchingJob(true)
+    try {
+      const res = manualJobMode
+        ? await cvService.matchJob(token, targetCvId, {
+          companyName: matchCompany,
+          positionTitle: matchPosition,
+          requirements: matchRequirements,
+        })
+        : await cvService.matchPosting(token, targetCvId, selectedPostingId)
+      setMatchResult(res)
+      cvService.listJobMatches(token).then(setJobMatches).catch(() => {})
+    } catch (err) {
+      setMatchError(getFriendlyError(err) || 'Không thể đối chiếu với nhà tuyển dụng lúc này. Vui lòng thử lại.')
+    } finally {
+      setMatchingJob(false)
+    }
+  }
+
   async function uploadAndAnalyze(event) {
     event.preventDefault()
     const formElement = event.currentTarget
@@ -220,6 +294,7 @@ export function MyCvsPage() {
       uploadedCv = await cvService.upload(token, file)
       setCvs((current) => [uploadedCv, ...current])
       setStatuses((current) => ({ ...current, [uploadedCv.cvId]: '' }))
+      setMatchCvId(uploadedCv.cvId)
       setFile(null)
       formElement.reset()
       setInfo('Tải CV thành công! Đang bắt đầu gửi đến AI phân tích…')
@@ -257,7 +332,7 @@ export function MyCvsPage() {
       const content = await cvService.getManualContent(token, cv.cvId)
       setManual(content)
       setEditingCvId(cv.cvId)
-      setActiveTab('manual')
+      selectTab('manual')
       setInfo('Đã tải nội dung CV vào biểu mẫu. Khi lưu, hệ thống sẽ tạo một bản mới để bảo lưu lịch sử cũ.')
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (requestError) { setError(getFriendlyError(requestError)) }
@@ -289,6 +364,7 @@ export function MyCvsPage() {
       createdCv = await cvService.createManual(token, { title, ...values })
       setCvs((current) => [createdCv, ...current])
       setStatuses((current) => ({ ...current, [createdCv.cvId]: '' }))
+      setMatchCvId(createdCv.cvId)
       setManual(EMPTY_MANUAL)
       setEditingCvId(null)
       setInfo('Tạo CV mới thành công! Đang kích hoạt phân tích AI…')
@@ -324,8 +400,8 @@ export function MyCvsPage() {
           <div className="badge-ai" style={{ marginBottom: 8 }}>
             <SparklesIcon size={14} /> AI Powered Career Match
           </div>
-          <h1>Quản lý CV & Phân tích</h1>
-          <p className="muted">Tải file hoặc nhập CV để AI bóc tách năng lực và xếp hạng nghề CNTT phù hợp.</p>
+          <h1>Quản lý CV & Đối chiếu tuyển dụng</h1>
+          <p className="muted">Tải CV để nhận đánh giá năng lực CNTT hoặc đối chiếu trực tiếp với yêu cầu của Nhà tuyển dụng.</p>
         </div>
         <Link className="button button-secondary" to="/history">
           <ClockIcon size={16} /> Lịch sử phân tích
@@ -338,31 +414,21 @@ export function MyCvsPage() {
 
       {/* Live AI Analysis Banner */}
       {workingCvId && (
-        <div className="ai-live-banner" role="status" aria-live="polite">
-          <div className="pulse-radar-dot" />
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <strong>AI đang xử lý CV của bạn</strong>
-              <span className="badge-ai" style={{ fontSize: '0.7rem' }}>
-                <RefreshCwIcon size={12} className="spin" /> Đang chạy
-              </span>
-            </div>
-            <p style={{ margin: 0, fontSize: '0.86rem', color: 'var(--muted)' }}>{analysisMessage}</p>
-            <p style={{ margin: '6px 0 0', fontSize: '0.78rem', color: 'var(--primary)', fontStyle: 'italic' }}>
-              💡 Mẹo viết CV: {reducedMotion ? CV_WRITING_TIPS[0] : CV_WRITING_TIPS[tipIndex]}
-            </p>
-          </div>
-        </div>
+        <AiScanningPanel
+          mode="cv"
+          message={analysisMessage}
+          tip={reducedMotion ? CV_WRITING_TIPS[0] : CV_WRITING_TIPS[tipIndex]}
+        />
       )}
 
-      {/* Input Method Switcher */}
-      <div className="tab-pills" role="tablist" aria-label="Phương thức nạp CV">
+      {/* Mode Switcher Tabs */}
+      <div className="tab-pills" role="tablist" aria-label="Phương thức nạp CV & Đối chiếu">
         <button
           type="button"
           role="tab"
           aria-selected={activeTab === 'upload'}
           className={`tab-pill ${activeTab === 'upload' ? 'tab-pill-active' : ''}`}
-          onClick={() => setActiveTab('upload')}
+          onClick={() => selectTab('upload')}
         >
           <UploadCloudIcon size={16} /> Tải file CV (PDF / DOCX)
         </button>
@@ -371,23 +437,27 @@ export function MyCvsPage() {
           role="tab"
           aria-selected={activeTab === 'manual'}
           className={`tab-pill ${activeTab === 'manual' ? 'tab-pill-active' : ''}`}
-          onClick={() => setActiveTab('manual')}
+          onClick={() => selectTab('manual')}
         >
           <FileTextIcon size={16} /> Nhập CV thủ công {editingCvId && '(Đang sửa)'}
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'recruiter'}
+          className={`tab-pill ${activeTab === 'recruiter' ? 'tab-pill-active' : ''}`}
+          style={{ color: activeTab === 'recruiter' ? 'var(--primary)' : '#4338CA', fontWeight: 800 }}
+          onClick={() => selectTab('recruiter')}
+        >
+          <BriefcaseIcon size={16} /> So khớp theo yêu cầu tuyển dụng
+        </button>
       </div>
 
-      {/* Upload Zone */}
+      {/* TAB 1: Upload Zone */}
       {activeTab === 'upload' && (
         <section
-          className={`saas-card laser-container ${draggingFile ? 'is-dragging' : ''}`}
-          style={{
-            padding: '36px 28px',
-            textAlign: 'center',
-            border: draggingFile ? '2px dashed var(--primary)' : '2px dashed #CBD5E1',
-            background: draggingFile ? 'rgba(238, 242, 255, 0.7)' : 'rgba(255, 255, 255, 0.95)',
-            marginBottom: 28,
-          }}
+          className={`saas-card upload-panel laser-container ${draggingFile ? 'is-dragging' : ''}`}
+          style={{ marginBottom: 28 }}
           onDragEnter={(e) => { e.preventDefault(); setDraggingFile(true) }}
           onDragOver={(e) => e.preventDefault()}
           onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDraggingFile(false) }}
@@ -395,7 +465,7 @@ export function MyCvsPage() {
         >
           {(uploading || workingCvId) && <div className="laser-scanner-beam" />}
           
-          <div style={{ display: 'grid', placeItems: 'center', width: 60, height: 60, borderRadius: 18, background: 'var(--mint)', color: 'var(--primary)', margin: '0 auto 16px' }}>
+          <div className="drop-icon">
             <UploadCloudIcon size={30} />
           </div>
           
@@ -434,7 +504,7 @@ export function MyCvsPage() {
         </section>
       )}
 
-      {/* Manual Entry Form */}
+      {/* TAB 2: Manual Entry Form */}
       {activeTab === 'manual' && (
         <section className="saas-card manual-panel" style={{ padding: '28px', marginBottom: 28 }}>
           <div className="manual-heading" style={{ marginBottom: 20 }}>
@@ -490,13 +560,364 @@ export function MyCvsPage() {
                 <button
                   type="button"
                   className="button button-quiet"
-                  onClick={() => { setEditingCvId(null); setManual(EMPTY_MANUAL); setActiveTab('upload') }}
+                  onClick={() => { setEditingCvId(null); setManual(EMPTY_MANUAL); selectTab('upload') }}
                 >
                   Hủy chỉnh sửa
                 </button>
               )}
             </div>
           </form>
+        </section>
+      )}
+
+      {/* TAB 3: Recruiter Match (Yêu cầu Nhà tuyển dụng) */}
+      {activeTab === 'recruiter' && (
+        <section className="saas-card" style={{ padding: '28px', marginBottom: 28, background: 'rgba(255, 255, 255, 0.95)' }}>
+          <div style={{ marginBottom: 20 }}>
+            <span className="badge-ai" style={{ marginBottom: 6 }}>
+              <BriefcaseIcon size={13} /> TIÊU CHÍ THỰC TẾ TỪ DOANH NGHIỆP
+            </span>
+            <h2 style={{ fontSize: '1.4rem', margin: '6px 0 6px' }}>So khớp CV theo Yêu cầu của Nhà tuyển dụng</h2>
+            <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
+              Chọn một tin tuyển dụng có nguồn để đối chiếu hồ sơ. Bạn cũng có thể dán tiêu chí từ tin khác.
+            </p>
+          </div>
+
+          {matchError && <div className="notice error" role="alert"><AlertCircleIcon size={18} /> {matchError}</div>}
+
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 18 }}>
+            <button type="button" className={`button ${!manualJobMode ? 'button-primary' : 'button-quiet'}`} onClick={() => setManualJobMode(false)}>
+              Tin tuyển dụng có nguồn
+            </button>
+            <button type="button" className={`button ${manualJobMode ? 'button-primary' : 'button-quiet'}`} onClick={() => setManualJobMode(true)}>
+              Dán yêu cầu khác
+            </button>
+          </div>
+
+          <form onSubmit={runRecruiterMatch} style={{ display: 'grid', gap: 16 }}>
+            {/* Choose CV */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, marginBottom: 6, color: 'var(--ink)' }}>
+                Chọn CV của bạn để đối chiếu:
+              </label>
+              {cvs.length === 0 ? (
+                <p className="notice warning" style={{ margin: 0 }}>
+                  Bạn chưa có CV nào trong hồ sơ. Vui lòng chuyển sang tab <strong>Tải file CV</strong> hoặc <strong>Nhập CV thủ công</strong> để thêm CV trước.
+                </p>
+              ) : (
+                <select
+                  value={matchCvId}
+                  onChange={(e) => setMatchCvId(e.target.value)}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--line)', background: '#fff', fontSize: '0.9rem' }}
+                >
+                  {cvs.map((cv) => (
+                    <option key={cv.cvId} value={cv.cvId}>
+                      {cv.title} ({cv.sourceType === 2 ? 'Nhập tay' : cv.fileExtension?.toUpperCase() || 'File'} - {new Date(cv.createdAt).toLocaleDateString('vi-VN')})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {!manualJobMode ? (
+              <div>
+                <label htmlFor="employer-posting" style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, marginBottom: 6, color: 'var(--ink)' }}>
+                  Tin tuyển dụng đang nhận hồ sơ:
+                </label>
+                {employerJobs.length === 0 ? (
+                  <div className="notice warning" role="status">Chưa có tin đang mở. Hãy thử lại sau hoặc dán tiêu chí tuyển dụng khác.</div>
+                ) : (
+                  <>
+                    <select id="employer-posting" value={selectedPostingId} onChange={(event) => setSelectedPostingId(event.target.value)} style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--line)', background: '#fff', fontSize: '0.9rem' }}>
+                      {employerJobs.map((job) => <option key={job.employerJobPostingId} value={job.employerJobPostingId}>{job.employerName} · {job.title} · {job.location}</option>)}
+                    </select>
+                    {employerJobs.find((job) => String(job.employerJobPostingId) === String(selectedPostingId)) && (() => {
+                      const selected = employerJobs.find((job) => String(job.employerJobPostingId) === String(selectedPostingId))
+                      return <p className="muted" style={{ margin: '8px 0 0', fontSize: '0.82rem' }}>
+                        Hạn nộp: {new Date(selected.deadlineAt).toLocaleDateString('vi-VN')} · <a href={selected.sourceUrl} target="_blank" rel="noreferrer">Mở tin nguồn</a>
+                      </p>
+                    })()}
+                  </>
+                )}
+              </div>
+            ) : <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, marginBottom: 6, color: 'var(--ink)' }}>
+                  Tên Nhà tuyển dụng / Công ty:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: FPT Software, VNG, Viettel..."
+                  value={matchCompany}
+                  onChange={(e) => setMatchCompany(e.target.value)}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--line)', background: '#fff', fontSize: '0.9rem' }}
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, marginBottom: 6, color: 'var(--ink)' }}>
+                  Vị trí ứng tuyển:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: Frontend ReactJS Developer..."
+                  value={matchPosition}
+                  onChange={(e) => setMatchPosition(e.target.value)}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--line)', background: '#fff', fontSize: '0.9rem' }}
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, marginBottom: 6, color: 'var(--ink)' }}>
+                Yêu cầu tuyển dụng của doanh nghiệp (Tiêu chí thực tế):
+              </label>
+              <textarea
+                rows={5}
+                placeholder="Dán toàn bộ các gạch đầu dòng về yêu cầu kỹ năng, kinh nghiệm từ tin tuyển dụng của công ty..."
+                value={matchRequirements}
+                onChange={(e) => setMatchRequirements(e.target.value)}
+                style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--line)', background: '#fff', fontSize: '0.88rem', lineHeight: 1.6 }}
+                required
+              />
+            </div>
+            </>}
+
+            <div>
+              <button
+                type="submit"
+                className="button button-primary"
+                disabled={matchingJob || cvs.length === 0 || (!manualJobMode && employerJobs.length === 0)}
+                style={{ minHeight: 46, padding: '0 24px', fontSize: '0.9rem' }}
+              >
+                <SparklesIcon size={18} />
+                {matchingJob ? 'Đang phân tích độ khớp với tiêu chí công ty…' : 'Bắt đầu đánh giá mức độ phù hợp'}
+              </button>
+            </div>
+          </form>
+
+          {matchingJob && (
+            <div style={{ marginTop: 24 }}>
+              <AiScanningPanel mode="recruiter" />
+            </div>
+          )}
+
+          {/* Recruiter Matching Result Display */}
+          {matchResult && (
+            <div style={{ marginTop: 32, paddingTop: 24, borderTop: '2px dashed var(--line)' }}>
+              {/* Score Banner */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 20,
+                  flexWrap: 'wrap',
+                  padding: '24px',
+                  background: 'linear-gradient(135deg, rgba(238, 242, 255, 0.9), #fff)',
+                  borderRadius: 16,
+                  border: '1px solid #C7D2FE',
+                  marginBottom: 20,
+                }}
+              >
+                <div>
+                  <span className="badge-ai" style={{ marginBottom: 6 }}>
+                    KẾT QUẢ ĐỐI CHIẾU DOANH NGHIỆP
+                  </span>
+                  <h3 style={{ fontSize: '1.4rem', margin: '4px 0 6px', color: 'var(--ink)' }}>
+                    <BriefcaseIcon size={16} /> {matchResult.companyName} — {matchResult.positionTitle}
+                  </h3>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 999, background: matchResult.matchScore >= 75 ? '#ECFDF5' : '#FFFBEB', color: matchResult.matchScore >= 75 ? '#059669' : '#D97706', fontWeight: 800, fontSize: '0.84rem', border: `1px solid ${matchResult.matchScore >= 75 ? '#A7F3D0' : '#FDE68A'}` }}>
+                    {matchResult.matchScore >= 75 ? <CheckCircleIcon size={15} /> : <AlertCircleIcon size={15} />}
+                    {matchResult.verdict}
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'center', padding: '12px 24px', background: '#fff', borderRadius: 14, border: '1px solid #CBD5E1', boxShadow: 'var(--shadow-small)' }}>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>Độ phù hợp</span>
+                  <strong style={{ fontSize: '2.5rem', color: matchResult.matchScore >= 75 ? '#059669' : 'var(--primary)', lineHeight: 1.1 }}>
+                    {matchResult.matchScore}%
+                  </strong>
+                </div>
+              </div>
+
+              {/* Summary */}
+              {matchResult.summary && (
+                <div style={{ padding: '16px 20px', background: '#F8FAFC', borderRadius: 12, border: '1px solid var(--line-soft)', marginBottom: 20 }}>
+                  <strong style={{ display: 'block', fontSize: '0.86rem', color: 'var(--ink)', marginBottom: 4 }}>
+                    <FileTextIcon size={16} /> Nhận xét tổng quan từ AI:
+                  </strong>
+                  <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.65 }}>
+                    {matchResult.summary}
+                  </p>
+                </div>
+              )}
+
+              {/* Two Column Breakdown */}
+              <div className="bento-grid" style={{ marginBottom: 20 }}>
+                {/* Met Requirements */}
+                <div className="saas-card bento-col-6" style={{ padding: '20px', background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, color: '#166534', fontWeight: 800, fontSize: '0.95rem' }}>
+                    <CheckCircleIcon size={18} />
+                    Tiêu chí Nhà tuyển dụng yêu cầu mà bạn ĐÃ ĐẠT ({matchResult.matchedRequirements?.length || 0})
+                  </div>
+                  {matchResult.matchedRequirements && matchResult.matchedRequirements.length > 0 ? (
+                    <div style={{ display: 'grid', gap: 10 }}>
+                      {matchResult.matchedRequirements.map((item, idx) => (
+                        <div key={idx} style={{ padding: '12px', background: '#fff', borderRadius: 10, border: '1px solid #DCFCE7' }}>
+                          <strong style={{ display: 'block', fontSize: '0.88rem', color: '#14532D', marginBottom: 4 }}>
+                            {item.requirement}
+                          </strong>
+                          {item.evidence && (
+                            <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', fontStyle: 'italic', paddingLeft: 8, borderLeft: '3px solid #22C55E' }}>
+                              “{item.evidence}”
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={{ margin: 0, fontSize: '0.84rem', color: '#166534' }}>Chưa tìm thấy tiêu chí nào hoàn toàn trùng khớp.</p>
+                  )}
+                </div>
+
+                {/* Missing Requirements */}
+                <div className="saas-card bento-col-6" style={{ padding: '20px', background: '#FFFDF5', border: '1px solid #FDE68A' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, color: '#92400E', fontWeight: 800, fontSize: '0.95rem' }}>
+                    <AlertCircleIcon size={18} />
+                    Tiêu chí Nhà tuyển dụng yêu cầu mà bạn CÒN THIẾU ({matchResult.missingRequirements?.length || 0})
+                  </div>
+                  {matchResult.missingRequirements && matchResult.missingRequirements.length > 0 ? (
+                    <div style={{ display: 'grid', gap: 10 }}>
+                      {matchResult.missingRequirements.map((item, idx) => (
+                        <div key={idx} style={{ padding: '12px', background: '#fff', borderRadius: 10, border: '1px solid #FEF3C7' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
+                            <strong style={{ fontSize: '0.88rem', color: '#78350F' }}>
+                              {item.requirement}
+                            </strong>
+                            <span style={{ padding: '2px 8px', borderRadius: 999, background: '#FEF3C7', color: '#B45309', fontSize: '0.7rem', fontWeight: 800, flexShrink: 0 }}>
+                              Mức {item.importance || 3}/5
+                            </span>
+                          </div>
+                          {item.reason && (
+                            <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: '#92400E' }}>
+                              <SparklesIcon size={14} /> {item.reason}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={{ margin: 0, fontSize: '0.84rem', color: '#92400E' }}>Không có tiêu chí cốt lõi nào bị thiếu.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Recruiter Advice */}
+              {matchResult.recruiterAdvice && matchResult.recruiterAdvice.length > 0 && (
+                <div className="saas-card" style={{ padding: '20px', background: '#F8FAFC', border: '1px solid var(--line)' }}>
+                  <strong style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.95rem', color: 'var(--primary)', marginBottom: 10 }}>
+                    <SparklesIcon size={16} /> Lời khuyên tối ưu CV dành riêng cho Nhà tuyển dụng này:
+                  </strong>
+                  <ul style={{ margin: 0, paddingLeft: 20 }}>
+                    {matchResult.recruiterAdvice.map((advice, idx) => (
+                      <li key={idx} style={{ fontSize: '0.86rem', color: '#334155', lineHeight: 1.6, marginBottom: 4 }}>
+                        {advice}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Saved Recruiter Match History */}
+          {jobMatches.length > 0 && (
+            <div style={{ marginTop: 28, paddingTop: 20, borderTop: '1px solid var(--line-soft)' }}>
+              <h3 style={{ fontSize: '1.05rem', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ClockIcon size={17} color="var(--primary)" /> Lịch sử đối chiếu Nhà tuyển dụng ({jobMatches.length})
+              </h3>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {jobMatches.map((item) => {
+                  const score = Number(item.matchScore ?? 0)
+                  const good = score >= 75
+                  return (
+                    <div
+                      key={item.matchId}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        flexWrap: 'wrap',
+                        padding: '12px 16px',
+                        borderRadius: 12,
+                        background: '#F8FAFC',
+                        border: '1px solid var(--line)',
+                      }}
+                    >
+                      <div style={{ minWidth: 200, flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--ink)' }}>
+                          {item.companyName} — {item.positionTitle}
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--muted)', marginTop: 2 }}>
+                          CV: <strong>{item.cvTitle}</strong> · {new Date(item.createdAt).toLocaleString('vi-VN')}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: 999,
+                            fontSize: '0.78rem',
+                            fontWeight: 800,
+                            background: good ? '#ECFDF5' : '#FFFBEB',
+                            color: good ? '#059669' : '#D97706',
+                            border: `1px solid ${good ? '#A7F3D0' : '#FDE68A'}`,
+                          }}
+                        >
+                          {item.matchScore != null ? `${Math.round(score)}/100` : '—'} · {item.verdict}
+                        </span>
+                        <button
+                          type="button"
+                          className="button button-quiet"
+                          style={{ minHeight: 34, padding: '0 12px', fontSize: '0.8rem' }}
+                          onClick={() => {
+                            try {
+                              setMatchResult(JSON.parse(item.resultJson))
+                            } catch {
+                              setMatchError('Không thể đọc lại dữ liệu kết quả này.')
+                            }
+                          }}
+                        >
+                          Xem lại
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-quiet"
+                          style={{ minHeight: 34, padding: '0 10px', color: 'var(--danger)' }}
+                          title="Xóa lịch sử đối chiếu này"
+                          onClick={async () => {
+                            try {
+                              await cvService.deleteJobMatch(token, item.matchId)
+                              setJobMatches((prev) => prev.filter((m) => m.matchId !== item.matchId))
+                            } catch (err) {
+                              setMatchError(getFriendlyError(err))
+                            }
+                          }}
+                        >
+                          <Trash2Icon size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -526,7 +947,7 @@ export function MyCvsPage() {
             <p className="muted" style={{ maxWidth: 460, margin: '0 auto 20px' }}>
               Hãy tải lên file CV PDF/DOCX hoặc nhập thủ công ở trên để bắt đầu trải nghiệm phân tích kỹ năng và tư vấn vị trí IT.
             </p>
-            <button className="button button-primary" onClick={() => setActiveTab('upload')}>
+            <button className="button button-primary" onClick={() => selectTab('upload')}>
               <UploadCloudIcon size={16} /> Tải file ngay
             </button>
           </div>
@@ -536,13 +957,15 @@ export function MyCvsPage() {
               const status = statuses[cv.cvId]
               const analysisId = latestAnalysisIds[cv.cvId]
               const active = workingCvId === cv.cvId
+              const isScanning = status === 'Pending' || status === 'Processing' || active
 
               return (
-                <article className="saas-card cv-bento-card" key={cv.cvId}>
+                <article className={`saas-card cv-bento-card ${isScanning ? 'laser-container is-scanning' : ''}`} key={cv.cvId}>
+                  {isScanning && <div className="laser-scanner-beam" />}
                   <div>
                     <div className="cv-bento-header">
                       <div className="cv-type-icon">
-                        {cv.sourceType === 2 ? <FileTextIcon size={22} /> : <FileTextIcon size={22} />}
+                        <FileTextIcon size={22} />
                       </div>
                       <div className="cv-bento-meta">
                         <h3 title={cv.title}>{cv.title}</h3>
@@ -580,7 +1003,7 @@ export function MyCvsPage() {
                   </div>
 
                   <div className="cv-bento-footer">
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       {status === 'Completed' && analysisId ? (
                         <Link to={`/analyses/${analysisId}`} className="button button-primary" style={{ minHeight: 38, fontSize: '0.82rem' }}>
                           Xem kết quả <ArrowRightIcon size={14} />
@@ -596,6 +1019,19 @@ export function MyCvsPage() {
                           {active ? 'Đang phân tích…' : status === 'Failed' ? 'Thử lại' : 'Phân tích'}
                         </button>
                       )}
+
+                      <button
+                        className="button button-quiet"
+                        style={{ minHeight: 38, fontSize: '0.82rem', borderColor: '#C7D2FE', color: 'var(--primary)' }}
+                        onClick={() => {
+                          setMatchCvId(cv.cvId)
+                          selectTab('recruiter')
+                          window.scrollTo({ top: 0, behavior: 'smooth' })
+                        }}
+                        title="So khớp CV này với tiêu chí cụ thể của Nhà tuyển dụng"
+                      >
+                        <BriefcaseIcon size={14} /> So khớp Nhà tuyển dụng
+                      </button>
 
                       {status === 'Completed' && (
                         <button

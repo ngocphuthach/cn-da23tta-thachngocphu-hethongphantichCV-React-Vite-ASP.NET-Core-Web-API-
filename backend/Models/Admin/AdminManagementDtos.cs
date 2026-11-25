@@ -38,3 +38,18 @@ public sealed record PagedAdminAnalysesDto(
     int PageSize,
     int TotalCount,
     IReadOnlyList<AdminAnalysisDto> Items);
+
+public sealed record AdminCvDto(
+    Guid CvId,
+    Guid UserId,
+    string SourceType,
+    DateTime CreatedAt,
+    int AnalysisCount,
+    string? LatestAnalysisStatus,
+    DateTime? LatestAnalysisAt);
+
+public sealed record PagedAdminCvsDto(
+    int Page,
+    int PageSize,
+    int TotalCount,
+    IReadOnlyList<AdminCvDto> Items);

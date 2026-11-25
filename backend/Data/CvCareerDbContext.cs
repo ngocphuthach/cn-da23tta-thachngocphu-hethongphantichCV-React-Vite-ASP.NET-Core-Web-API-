@@ -21,6 +21,12 @@ public sealed class CvCareerDbContext(DbContextOptions<CvCareerDbContext> option
 
     public DbSet<AdminCatalogAuditLog> AdminCatalogAuditLogs => Set<AdminCatalogAuditLog>();
 
+    public DbSet<Employer> Employers => Set<Employer>();
+
+    public DbSet<EmployerJobPosting> EmployerJobPostings => Set<EmployerJobPosting>();
+
+    public DbSet<CvJobMatch> CvJobMatches => Set<CvJobMatch>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -32,6 +38,8 @@ public sealed class CvCareerDbContext(DbContextOptions<CvCareerDbContext> option
         ConfigureJobPositionSkills(modelBuilder);
         ConfigureCVAnalyses(modelBuilder);
         ConfigureCatalogAdministration(modelBuilder);
+        ConfigureEmployerJobs(modelBuilder);
+        ConfigureCvJobMatches(modelBuilder);
 
         modelBuilder.Entity<Skill>().HasData(CatalogSeedData.Skills);
         modelBuilder.Entity<JobPosition>().HasData(CatalogSeedData.JobPositions);
@@ -155,6 +163,39 @@ public sealed class CvCareerDbContext(DbContextOptions<CvCareerDbContext> option
             .OnDelete(DeleteBehavior.NoAction);
     }
 
+    private static void ConfigureEmployerJobs(ModelBuilder modelBuilder)
+    {
+        var employer = modelBuilder.Entity<Employer>();
+        employer.ToTable("Employers");
+        employer.HasKey(item => item.EmployerId);
+        employer.Property(item => item.EmployerId).UseIdentityColumn();
+        employer.Property(item => item.Name).HasMaxLength(200).IsRequired();
+        employer.HasIndex(item => item.Name).IsUnique().HasDatabaseName("UX_Employers_Name");
+        employer.Property(item => item.WebsiteUrl).HasMaxLength(500);
+        employer.Property(item => item.CareersUrl).HasMaxLength(500);
+        employer.Property(item => item.IsActive).HasDefaultValue(true);
+        employer.Property(item => item.RowVersion).IsRowVersion();
+        employer.Property(item => item.CreatedAt).HasColumnType("datetime2").HasDefaultValueSql("SYSUTCDATETIME()");
+
+        var posting = modelBuilder.Entity<EmployerJobPosting>();
+        posting.ToTable("EmployerJobPostings", table => table.HasCheckConstraint(
+            "CK_EmployerJobPostings_Requirements_Size", "DATALENGTH([Requirements]) <= 40000"));
+        posting.HasKey(item => item.EmployerJobPostingId);
+        posting.Property(item => item.EmployerJobPostingId).UseIdentityColumn();
+        posting.Property(item => item.Title).HasMaxLength(200).IsRequired();
+        posting.Property(item => item.Location).HasMaxLength(120).IsRequired();
+        posting.Property(item => item.Requirements).HasColumnType("nvarchar(max)").IsRequired();
+        posting.Property(item => item.SourceUrl).HasMaxLength(1000).IsRequired();
+        posting.Property(item => item.DeadlineAt).HasColumnType("datetime2");
+        posting.Property(item => item.IsActive).HasDefaultValue(true);
+        posting.Property(item => item.RowVersion).IsRowVersion();
+        posting.Property(item => item.CreatedAt).HasColumnType("datetime2").HasDefaultValueSql("SYSUTCDATETIME()");
+        posting.HasIndex(item => new { item.EmployerId, item.IsActive, item.DeadlineAt })
+            .HasDatabaseName("IX_EmployerJobPostings_Employer_Active_Deadline");
+        posting.HasOne(item => item.Employer).WithMany(item => item.JobPostings)
+            .HasForeignKey(item => item.EmployerId).OnDelete(DeleteBehavior.NoAction);
+    }
+
     private static void ConfigureCVAnalyses(ModelBuilder modelBuilder)
     {
         var entity = modelBuilder.Entity<CvAnalysis>();
@@ -191,6 +232,34 @@ public sealed class CvCareerDbContext(DbContextOptions<CvCareerDbContext> option
         entity.HasOne(analysis => analysis.Cv)
             .WithMany(cv => cv.Analyses)
             .HasForeignKey(analysis => analysis.CvId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+
+    private static void ConfigureCvJobMatches(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<CvJobMatch>();
+        entity.ToTable("CvJobMatches", table =>
+        {
+            table.HasCheckConstraint(
+                "CK_CvJobMatches_Score_Range",
+                "[MatchScore] IS NULL OR ([MatchScore] >= 0 AND [MatchScore] <= 100)");
+            table.HasCheckConstraint(
+                "CK_CvJobMatches_ResultJson_IsJson",
+                "ISJSON([ResultJson]) = 1");
+        });
+        entity.HasKey(match => match.MatchId);
+
+        entity.Property(match => match.CompanyName).HasMaxLength(200).IsRequired();
+        entity.Property(match => match.PositionTitle).HasMaxLength(200).IsRequired();
+        entity.Property(match => match.MatchScore).HasColumnType("decimal(5,2)");
+        entity.Property(match => match.Verdict).HasMaxLength(150).IsRequired();
+        entity.Property(match => match.ResultJson).HasColumnType("nvarchar(max)").IsRequired();
+        entity.Property(match => match.CreatedAt).HasColumnType("datetime2").HasDefaultValueSql("SYSUTCDATETIME()");
+        entity.HasIndex(match => new { match.CvId, match.CreatedAt }).HasDatabaseName("IX_CvJobMatches_CvId_CreatedAt");
+
+        entity.HasOne(match => match.Cv)
+            .WithMany()
+            .HasForeignKey(match => match.CvId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

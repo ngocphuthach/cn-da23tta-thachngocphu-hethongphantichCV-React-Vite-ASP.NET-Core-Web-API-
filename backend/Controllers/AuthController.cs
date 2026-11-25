@@ -111,6 +111,68 @@ public sealed class AuthController(
         return user is null ? Unauthorized() : Ok(ToProfile(user));
     }
 
+    [Authorize]
+    [HttpPut("profile")]
+    public async Task<ActionResult<UserProfileResponse>> UpdateProfile(
+        UpdateProfileRequest request,
+        CancellationToken cancellationToken)
+    {
+        var subject = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        if (!Guid.TryParse(subject, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.FullName))
+        {
+            ModelState.AddModelError(nameof(request.FullName), "Họ tên không được để trống.");
+            return ValidationProblem(ModelState);
+        }
+
+        var user = await dbContext.Users
+            .SingleOrDefaultAsync(candidate => candidate.UserId == userId && candidate.IsActive, cancellationToken);
+        if (user is null)
+        {
+            return Unauthorized();
+        }
+
+        user.FullName = request.FullName.Trim();
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(ToProfile(user));
+    }
+
+    [Authorize]
+    [HttpPost("change-password")]
+    public async Task<IActionResult> ChangePassword(
+        ChangePasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var subject = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        if (!Guid.TryParse(subject, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var user = await dbContext.Users
+            .SingleOrDefaultAsync(candidate => candidate.UserId == userId && candidate.IsActive, cancellationToken);
+        if (user is null)
+        {
+            return Unauthorized();
+        }
+
+        var verification = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, request.CurrentPassword);
+        if (verification == PasswordVerificationResult.Failed)
+        {
+            return BadRequest(new { message = "Mật khẩu hiện tại không đúng." });
+        }
+
+        user.PasswordHash = passwordHasher.HashPassword(user, request.NewPassword);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new { message = "Đã đổi mật khẩu thành công." });
+    }
+
     private static UserProfileResponse ToProfile(User user) =>
         new(user.UserId, user.Email, user.FullName, user.Role);
 }
