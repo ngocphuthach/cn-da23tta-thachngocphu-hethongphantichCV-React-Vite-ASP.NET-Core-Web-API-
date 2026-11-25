@@ -1,98 +1,154 @@
-# Career Compass
+# Xây Dựng Hệ Thống Phân Tích CV Và Tư Vấn Nghề Nghiệp (Career Compass)
 
-Career Compass là hệ thống quản lý CV, phân tích nội dung bằng AI và tham khảo mức độ khớp kỹ năng với các nghề CNTT. Kết quả chỉ mang tính tham khảo.
+Hệ thống web hỗ trợ ứng viên ngành Công nghệ Thông tin quản lý hồ sơ xin việc (CV), phân tích năng lực bằng trí tuệ nhân tạo kết hợp thuật toán định lượng, đối chiếu trực tiếp với yêu cầu tuyển dụng thực tế từ doanh nghiệp và tư vấn định hướng nghề nghiệp phù hợp.
 
-## Công nghệ và kiến trúc
+---
 
-- Frontend: React, Vite.
-- Backend trung tâm: ASP.NET Core Web API, JWT, Entity Framework Core.
-- AI Service: Python, FastAPI; gửi nội dung CV tới dịch vụ AI bên ngoài.
-- Cơ sở dữ liệu: Microsoft SQL Server; môi trường toàn hệ thống dùng Docker Compose.
-- Backend gọi AI Service và lưu CV, kết quả, lịch sử vào SQL Server.
+## Thông Tin Sinh Viên Thực Hiện
 
-## Chức năng hiện có
+| Thông tin | Chi tiết |
+| :--- | :--- |
+| **Tên đề tài** | Xây dựng hệ thống phân tích CV và tư vấn nghề nghiệp |
+| **Sinh viên thực hiện** | Thạch Ngọc Phú |
+| **MSSV** | `110123039` |
+| **Lớp** | `DA23TTA` |
+| **Giảng viên hướng dẫn** | ThS. Phạm Minh Đương |
 
-Đăng ký và đăng nhập JWT; tải CV PDF/DOCX hoặc nhập thông tin CV thủ công; phân tích CV bằng AI; backend tự tính điểm khớp kỹ năng; xem kết quả và lịch sử phân tích; quản lý và xóa CV.
+---
 
-## Cấu trúc thư mục
+## Mục Tiêu Đề Tài
+
+1. **Quản lý và chuẩn hóa hồ sơ CV**: Hỗ trợ người dùng tải lên CV định dạng `.PDF`, `.DOCX` hoặc nhập thông tin CV theo cấu trúc chuẩn; lưu trữ và theo dõi lịch sử các lần phân tích.
+2. **Phân tích khách quan, có cơ sở định lượng**: Kết hợp khả năng đọc hiểu ngữ cảnh của Mô hình ngôn ngữ lớn (LLM) với thuật toán tính điểm tại Backend dựa trên danh mục nghề nghiệp và kỹ năng CNTT được quản trị tập trung.
+3. **So khớp trực tiếp với Nhà tuyển dụng**: Cho phép đối chiếu CV với tin tuyển dụng thực tế từ doanh nghiệp hoặc yêu cầu nhập tay; chỉ ra điểm phù hợp (`0–100`), các tiêu chí đã đáp ứng kèm trích dẫn bằng chứng từ CV, kỹ năng còn thiếu theo mức độ quan trọng, lời khuyên cải thiện và lưu lại lịch sử đối chiếu.
+4. **Bảo vệ quyền riêng tư (PII Masking)**: Tự động che giấu thông tin liên hệ nhạy cảm (email, số điện thoại) trước khi gửi nội dung CV ra dịch vụ AI bên ngoài.
+5. **Quản trị hệ thống toàn diện (Admin)**: Cung cấp bảng điều khiển thống kê, quản lý danh mục nghề/kỹ năng, quản lý nhà tuyển dụng và tin tuyển dụng, quản lý tài khoản người dùng và nhật ký kiểm toán (`Audit Log`).
+
+---
+
+## Công Nghệ Sử Dụng
+
+| Thành phần | Công nghệ / Thư viện | Vai trò |
+| :--- | :--- | :--- |
+| **Frontend** | React, Vite, Recharts, CSS3 | Giao diện người dùng SPA, biểu đồ Radar & thống kê, hiệu ứng quét CV |
+| **Backend** | ASP.NET Core Web API (.NET 10), EF Core, JWT, Rate Limiting | Điều phối nghiệp vụ, xác thực & phân quyền (RBAC), tính điểm khớp, hàng đợi xử lý nền |
+| **AI Service** | Python, FastAPI, Pydantic, PyMuPDF (`fitz`), `python-docx` | Trích xuất văn bản PDF/DOCX, ẩn danh PII, gọi LLM trả JSON có cấu trúc |
+| **Cơ sở dữ liệu** | Microsoft SQL Server 2022 | Lưu trữ người dùng, CV, lịch sử phân tích, đối chiếu nhà tuyển dụng, danh mục & audit |
+| **Triển khai** | Docker, Docker Compose, Nginx | Đóng gói và vận hành đồng bộ đa dịch vụ |
+
+---
+
+## Cấu Trúc Thư Mục
 
 ```text
-frontend/       React + Vite
-backend/        ASP.NET Core API, EF Core và migrations
-ai-service/     FastAPI, trích xuất CV và gọi LLM
-docker-compose.yml
-dotnet-tools.json
+.
+├── frontend/               # Ứng dụng React + Vite (giao diện người dùng & Admin)
+├── backend/                # ASP.NET Core Web API (.NET 10), EF Core & Migrations
+├── ai-service/             # Dịch vụ FastAPI trích xuất CV, ẩn danh PII & gọi LLM
+├── docx/                   # Tài liệu báo cáo đồ án chuyên ngành (.docx)
+├── docker-compose.yml      # Cấu hình chạy toàn bộ hệ thống bằng Docker
+├── dotnet-tools.json       # Công cụ dotnet-ef quản lý migration
+├── .env.example            # File mẫu biến môi trường
+└── README.md               # Tài liệu giới thiệu và hướng dẫn triển khai
 ```
 
-## Chạy toàn hệ thống bằng Docker Compose
+---
 
-Tạo file cấu hình cục bộ bằng `Copy-Item .env.example .env`, rồi tự điền các biến cần thiết. Compose dùng các tên biến: `SA_PASSWORD`, `JWT_SIGNING_KEY`, `INTERNAL_API_KEY`, `CORS_ALLOWED_ORIGIN`, `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`, `VITE_API_BASE_URL` (cùng `MSSQL_PID` và `MSSQL_PORT` nếu cần điều chỉnh). Không ghi giá trị bí mật vào README hoặc source.
+## Cách Cài Đặt Và Triển Khai
+
+### 1. Yêu cầu môi trường
+- **Nếu chạy bằng Docker (khuyên dùng):** Cài đặt [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+- **Nếu chạy phát triển cục bộ (Local):** Cài đặt [.NET 10 SDK](https://dotnet.microsoft.com/), [Node.js](https://nodejs.org/) (v20+), [Python](https://www.python.org/) (3.11+) và SQL Server (hoặc chạy riêng container SQL Server).
+
+### 2. Cấu hình biến môi trường
+Tại thư mục gốc dự án, tạo file `.env` từ file mẫu:
 
 ```powershell
-docker compose config --quiet
-docker compose up --build
+Copy-Item .env.example .env
 ```
 
-Frontend tại <http://localhost:5173>, Backend tại <http://localhost:5000>. SQL Server được publish trên `localhost,1433`; AI Service chỉ dùng nội bộ Compose. Xem log bằng `docker compose logs -f backend ai-service`; dừng bằng `docker compose stop` hoặc `docker compose down` (không dùng `down -v` nếu cần giữ volume).
+Mở file `.env` và điền các giá trị phù hợp:
+- `SA_PASSWORD`: Mật khẩu tài khoản `sa` của SQL Server (tối thiểu 8 ký tự gồm chữ hoa, chữ thường, số và ký tự đặc biệt).
+- `JWT_SIGNING_KEY`: Chuỗi bí mật ký JWT (tối thiểu 32 ký tự).
+- `INTERNAL_API_KEY`: Khóa xác thực nội bộ giữa Backend và AI Service.
+- `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`: Thông tin kết nối nhà cung cấp mô hình AI.
+- `CORS_ALLOWED_ORIGIN`: `http://localhost:5173`
+- `VITE_API_BASE_URL`: `http://localhost:5000`
 
-## Chạy từng phần khi phát triển
+---
 
-- SQL Server: `docker compose up -d sqlserver`.
-- Backend: thiết lập connection string qua User Secrets, sau đó chạy `cd backend; dotnet run --launch-profile http`.
-- AI Service: trong `ai-service`, tạo và kích hoạt virtual environment, cài `requirements.txt`, rồi chạy `uvicorn main:app --reload --port 8000`. Cấu hình `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`; khóa nội bộ `INTERNAL_API_KEY` phải khớp cấu hình Backend.
-- Frontend: trong `frontend`, cài dependencies bằng `npm install`, rồi `npm run dev`. `VITE_API_BASE_URL` xác định địa chỉ Backend; cấu hình phát triển hiện dùng `http://localhost:5000`.
+### 3. Cách 1: Triển khai toàn hệ thống bằng Docker Compose (Khuyên dùng)
 
-## Migration có kiểm soát
+1. **Kiểm tra cấu hình và khởi chạy các dịch vụ:**
+   ```powershell
+   docker compose config --quiet
+   docker compose up -d --build
+   ```
 
-Backend không tự áp dụng migration khi khởi động. Chờ SQL Server healthy, cấu hình connection string trong User Secrets trỏ tới database dự kiến, rồi từ thư mục gốc chạy `dotnet tool restore` và `dotnet ef database update --project backend/CvAdvisor.Api.csproj --startup-project backend/CvAdvisor.Api.csproj`. Kiểm tra database đích trước khi áp dụng.
+2. **Áp dụng Migration cơ sở dữ liệu** *(Backend không tự migrate khi khởi động)*:
+   Chờ container `sqlserver` ở trạng thái `healthy`, sau đó chạy từ thư mục gốc:
+   ```powershell
+   dotnet tool restore
+   dotnet ef database update --project backend/CvAdvisor.Api.csproj --startup-project backend/CvAdvisor.Api.csproj
+   ```
 
-## Bảo mật và giới hạn
+3. **Tạo tài khoản Admin đầu tiên** *(chỉ chạy lần đầu khi chưa có Admin)*:
+   ```powershell
+   docker compose run --rm backend admin-bootstrap
+   ```
 
-- Không commit `.env`; chỉ dùng `.env.example` làm mẫu. Không ghi key hoặc mật khẩu vào source.
-- CV mẫu đặt trong `ai-service/samples/` được Git ignore. Chỉ dùng CV đã ẩn danh khi thử nghiệm.
-- CV được lưu trên máy chủ; trước khi gửi, hệ thống che email và số điện thoại. Các thông tin khác trong CV vẫn được gửi tới dịch vụ AI bên ngoài để phân tích.
-- Kết quả AI và điểm khớp kỹ năng chỉ hỗ trợ tham khảo, không thay thế đánh giá nghề nghiệp của con người.
-- Công cụ thử AI độc lập nằm tại `ai-service/test_analyze.py`; không dùng thay luồng Backend chính.
-- Chưa có kiểm thử tự động bao phủ đầy đủ toàn bộ luồng; cấu hình provider/model và khả năng truy cập dịch vụ AI phụ thuộc nhà cung cấp bên ngoài.
+4. **Truy cập hệ thống:**
+   - **Giao diện người dùng (Frontend):** <http://localhost:5173>
+   - **Trang quản trị (Admin):** <http://localhost:5173/admin/login>
+   - **Backend API:** <http://localhost:5000>
+   - **SQL Server:** `localhost,1433` *(AI Service chỉ giao tiếp nội bộ trong mạng Docker)*
 
-## Quản trị danh mục
+5. **Các lệnh quản lý thường dùng:**
+   ```powershell
+   # Xem log của backend và ai-service
+   docker compose logs -f backend ai-service
 
-Sau khi migration `AdminCatalogFoundation` được áp dụng có kiểm soát, quản trị viên có thể dùng `/admin/catalog` để quản lý nghề CNTT, kỹ năng và liên kết nghề-kỹ năng. Mã không thể sửa sau khi tạo; nghề và kỹ năng chỉ được vô hiệu hóa, không xóa cứng. Thay đổi được ghi vào nhật ký chỉ đọc và làm tăng phiên bản danh mục. Mỗi lần phân tích dùng một ảnh chụp danh mục nhất quán; kết quả đã lưu được giữ nguyên.
+   # Dừng hệ thống (giữ nguyên dữ liệu database)
+   docker compose stop
+   ```
 
-Tạo Admin đầu tiên bằng chế độ console một lần. Trong Docker Compose, mở terminal tương tác:
+---
 
-```powershell
-docker compose run --rm backend admin-bootstrap
-```
+### 4. Cách 2: Cài đặt và chạy từng thành phần khi phát triển (Local)
 
-Lệnh yêu cầu email, họ tên và mật khẩu nhập hai lần (mật khẩu không hiển thị), chỉ chạy khi chưa có Admin, rồi thoát mà không khởi động web host. Khi phát triển, chạy `dotnet run --project backend/CvAdvisor.Api.csproj -- admin-bootstrap` sau khi cấu hình kết nối database.
+1. **Khởi động SQL Server:**
+   ```powershell
+   docker compose up -d sqlserver
+   ```
 
-Nếu quên mật khẩu Admin, người vận hành có quyền truy cập container/database chạy chế độ đặt lại có kiểm soát:
+2. **Cập nhật Database & chạy Backend:**
+   ```powershell
+   dotnet ef database update --project backend/CvAdvisor.Api.csproj --startup-project backend/CvAdvisor.Api.csproj
+   cd backend
+   dotnet run --launch-profile http
+   ```
+   *(Để tạo tài khoản Admin khi chạy local: `dotnet run --project backend/CvAdvisor.Api.csproj -- admin-bootstrap`)*
 
-```powershell
-docker compose run --rm backend admin-reset
-```
+3. **Chạy AI Service** *(mở terminal mới)*:
+   ```powershell
+   cd ai-service
+   python -m venv venv
+   .\venv\Scripts\Activate.ps1
+   pip install -r requirements.txt
+   uvicorn main:app --reload --port 8000
+   ```
 
-Nhập email tài khoản Admin và mật khẩu mới hai lần. Thao tác chỉ cập nhật password hash qua `PasswordHasher`; không có API công khai để cấp hoặc đổi vai trò. Bảo vệ quyền truy cập Docker và database vì đây là thao tác quản trị ngoại tuyến.
+4. **Chạy Frontend** *(mở terminal mới)*:
+   ```powershell
+   cd frontend
+   npm install
+   npm run dev
+   ```
 
-`jobs.json` chỉ được dùng bởi `ai-service/test_analyze.py` và phát triển. Khi Backend gọi AI Service, Backend gửi danh mục đang hoạt động cùng request; AI Service kiểm tra giới hạn và mã trước khi gọi LLM. Không cần build lại image khi sửa danh mục qua trang quản trị.
+---
 
-Giữ nguyên `HasData` và `CatalogSeedData.cs` sau khi triển khai. Không sửa seed để cập nhật danh mục; mọi thay đổi danh mục phải thực hiện qua trang Admin để giữ audit và phiên bản nhất quán.
+## Lưu Ý Bảo Mật & Giới Hạn
 
-## Dashboard và quản trị hệ thống
-
-Đăng nhập Admin tại `/admin/login`; tài khoản đầu tiên được tạo bằng `admin-bootstrap` như hướng dẫn ở trên. Phiên quản trị dùng token riêng trong sessionStorage, hết hạn sau 30 phút theo mặc định (`Jwt:AdminTokenMinutes` trong `appsettings.json`). Có thể cấu hình giá trị này trong appsettings của môi trường. Liên kết quản trị không hiển thị với người dùng thông thường, nhưng việc ẩn liên kết không phải biện pháp bảo mật; mọi API vẫn kiểm tra vai trò và trạng thái tài khoản trong database.
-
-Khu Admin có các trang `/admin` (Dashboard), `/admin/cvs`, `/admin/users`, `/admin/catalog`, `/admin/analyses` và `/admin/audit`. Dashboard hiển thị tổng người dùng, CV đã lưu, vị trí nghề hoạt động và tỷ lệ hoàn tất; có biểu đồ số lượt phân tích theo ngày, phân bố nghề xếp hạng đầu và bảng xếp hạng nghề. Biểu đồ hoạt động dùng tối đa 100 phân tích gần nhất; xếp hạng nghề dùng tối đa 1.000 kết quả Completed, JSON quá lớn hoặc sai cấu trúc được bỏ qua.
-
-Trang `/admin/employers` quản lý công ty và tin tuyển dụng có URL nguồn, địa điểm và hạn nộp. Tin hết hạn tự ẩn khỏi lựa chọn so khớp; admin có thể cập nhật hoặc vô hiệu hóa tin. Người dùng xem danh sách tin còn hạn tại CV của tôi và so khớp với một tin cụ thể; luồng dán yêu cầu tuyển dụng riêng vẫn được giữ. Danh mục công ty ban đầu có SystemEXE, FPT Software và Viettel kèm trang tuyển dụng chính thức. Hai tin SystemEXE tại Cần Thơ lấy từ Sanvieclamcantho (nguồn bên thứ ba), có hạn 24/11/2026 và tự ẩn sau hạn; cần mở nguồn kiểm tra trước khi ứng tuyển. Chưa có tin FPT/Viettel được bật vì chưa xác minh được tin IT Cần Thơ còn hạn; admin có thể thêm khi xác nhận nguồn và hạn phù hợp.
-
-Trang `/admin/cvs` là danh sách siêu dữ liệu có phân trang và lọc theo nguồn CV. Trang chỉ hiển thị mã CV, mã người dùng, loại nguồn, ngày tạo, số lượt phân tích và trạng thái gần nhất; không hiển thị tiêu đề, tên file, email, ContentText, evidence hay ResultJson. Có thể mở `/admin/catalog#jobs` để quản lý vị trí nghề và `/admin/catalog#skills` để quản lý kỹ năng.
-
-Trang người dùng hỗ trợ tìm email từ 3 ký tự, phân trang và khóa/mở khóa. Admin không thể tự khóa. Có thể khóa Admin khác khi còn ít nhất một Admin đang hoạt động; không thể khóa Admin hoạt động cuối cùng. Admin đã bị khóa có thể được mở khóa. Thay đổi dùng RowVersion để phát hiện xung đột và được ghi vào bảng audit hiện có dưới loại đối tượng `UserStatus`.
-
-Trang phân tích toàn hệ thống chỉ trả AnalysisId, trạng thái, thời gian, thời lượng, OverallScore và FailureCode cố định; không trả ResultJson, nội dung/evidence CV, tiêu đề hay tên file. FailureCode cũ để trống hiển thị “Không rõ”. Pending quá 10 phút được hiển thị như Failed với mã `AiTimeout`.
-
-Migration `AdminAnalyticsAndUserStatus` bổ sung RowVersion cho Users và FailureCode nullable cùng CHECK constraint cho CVAnalyses. Hãy kiểm tra trạng thái của database đích và áp dụng migration theo quy trình có kiểm soát tại mục Migration; backend không tự migrate khi khởi động.
-
-Migration `EmployerJobManagement` tạo bảng Employers và EmployerJobPostings, chỉ mục, khóa ngoại và giới hạn kích thước yêu cầu; đồng thời chèn hai tin tuyển dụng nguồn nêu trên. Migration đã được tạo nhưng chưa áp dụng. Kiểm tra database đích trước khi chạy `dotnet ef database update` theo quy trình có kiểm soát.
+- Không đưa file `.env` hoặc khóa API thật lên Git; chỉ lưu `.env.example`.
+- Hệ thống tự động ẩn danh email và số điện thoại trước khi gửi nội dung CV tới dịch vụ AI bên ngoài.
+- Kết quả phân tích và điểm số phù hợp chỉ mang tính chất tham khảo hỗ trợ định hướng nghề nghiệp, không thay thế hoàn toàn đánh giá tuyển dụng của con người.
